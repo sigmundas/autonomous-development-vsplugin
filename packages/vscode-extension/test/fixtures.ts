@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 
 export type Scenario =
   | 'initialized'
+  | 'currentCheckout'
   | 'implementing'
   | 'verificationFailed'
   | 'changesRequired'
@@ -91,7 +92,12 @@ function baseState(runId: string, overrides: Record<string, unknown>): Record<st
     label: runId,
     created_at: '2026-06-12T10:00:00Z',
     updated_at: '2026-06-12T11:00:00Z',
-    repository: { id: REPO_ID, display_name: 'Demo Repo', worktree_path: '/work/demo' },
+    repository: {
+      id: REPO_ID,
+      display_name: 'Demo Repo',
+      worktree_path: '/work/demo',
+      worktree_mode: 'isolated'
+    },
     max_review_rounds: 3,
     review_round: 0,
     artifacts: {},
@@ -173,6 +179,23 @@ export function buildFixtures(): Fixtures {
     'initialized',
     baseState('initialized', {
       phase: 'initialized',
+      artifacts: { feature_request: 'feature-request.md' }
+    }),
+    { 'feature-request.md': FEATURE_MD }
+  );
+
+  // 1a. currentCheckout — current-checkout mode on a clean feature branch.
+  writeRun(
+    stateHome,
+    'currentCheckout',
+    baseState('currentCheckout', {
+      phase: 'initialized',
+      repository: {
+        id: REPO_ID,
+        display_name: 'Demo Repo',
+        worktree_path: '/work/current',
+        worktree_mode: 'current'
+      },
       artifacts: { feature_request: 'feature-request.md' }
     }),
     { 'feature-request.md': FEATURE_MD }
@@ -572,6 +595,7 @@ export function buildFixtures(): Fixtures {
     repoId: REPO_ID,
     runIds: {
       initialized: 'initialized',
+      currentCheckout: 'currentCheckout',
       implementing: 'implementing',
       verificationFailed: 'verificationFailed',
       changesRequired: 'changesRequired',

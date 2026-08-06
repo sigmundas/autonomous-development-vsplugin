@@ -58,6 +58,16 @@ function runDescription(run: DiscoveredRun): string {
   return phase && phase !== status ? `${status} · ${phase}` : status;
 }
 
+function worktreeModeLabel(mode?: string): string | undefined {
+  if (mode === 'current') {
+    return 'current checkout';
+  }
+  if (mode === 'isolated') {
+    return 'isolated worktree';
+  }
+  return mode;
+}
+
 function runTooltip(run: DiscoveredRun): vscode.MarkdownString {
   const md = new vscode.MarkdownString();
   md.appendMarkdown(`**${runLabel(run)}**\n\n`);
@@ -69,6 +79,9 @@ function runTooltip(run: DiscoveredRun): vscode.MarkdownString {
     md.appendMarkdown(`- Repository: ${repo.displayName ?? repo.id}\n`);
     if (repo.worktreePath) {
       md.appendMarkdown(`- Worktree: ${repo.worktreePath}\n`);
+    }
+    if (repo.worktreeMode) {
+      md.appendMarkdown(`- Checkout mode: ${worktreeModeLabel(repo.worktreeMode)}\n`);
     }
     if (run.state.createdAt) {
       md.appendMarkdown(`- Created: ${run.state.createdAt}\n`);
@@ -166,6 +179,14 @@ export function detailNodes(run: DiscoveredRun): DetailNode[] {
   push('repository', 'Repository', repo.displayName ?? repo.id, new vscode.ThemeIcon('repo'));
   if (repo.worktreePath) {
     push('worktree', 'Worktree', repo.worktreePath, new vscode.ThemeIcon('folder'));
+  }
+  if (repo.worktreeMode) {
+    push(
+      'worktree-mode',
+      'Checkout mode',
+      worktreeModeLabel(repo.worktreeMode),
+      new vscode.ThemeIcon('git-branch')
+    );
   }
 
   if (model) {

@@ -3,6 +3,61 @@
 All notable changes to the SemanticMatter Autonomous Development extension are
 documented here. This project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Pre-run configuration surface.** A dedicated **Configuration** view in the
+  Autonomous Development activity-bar container is visible immediately after
+  opening a workspace — before any run exists and before the state home
+  directory has been created. Opening it launches a strict-CSP webview with
+  real dropdowns for the active preset, Claude runtime, and per-phase Codex
+  profile and reasoning effort. Every mutation flows through the controller's
+  `config-*` JSON contract: `config-show`, `config-list-profiles`,
+  `config-list-presets`, `config-list-claude-runtimes`,
+  `config-set-active-preset`, `config-set-phase`, `config-set-claude-runtime`,
+  and `config-validate`. QuickPick-based commands
+  (`autonomousDev.selectPreset`, `autonomousDev.configurePlanningAgent`,
+  `autonomousDev.configureReviewAgent`,
+  `autonomousDev.configureAdversarialReviewer`,
+  `autonomousDev.configureClaudeRuntime`,
+  `autonomousDev.showEffectiveConfiguration`,
+  `autonomousDev.validateConfiguration`) are exposed from the Command Palette
+  for fast changes without opening the panel.
+- **Preflight summary in Start Run.** The Start Run command now shows a modal
+  summary of the effective preset, Claude runtime, per-phase profile and
+  reasoning effort, workflow mode, and review-round budget with **Start**,
+  **Configure**, and **Cancel** choices. Starting threads the selected preset
+  through as `--preset <name>` on the skill invocation so the controller's
+  init step pins it into the run's `config_snapshot`.
+- **Launch Claude for Selected Preset.** `autonomousDev.launchClaude` opens a
+  new integrated terminal and pre-fills a safe argv-array launcher command for
+  the selected Claude runtime. Fails clearly when no runtime is selected, when
+  the launcher is missing, and when the launcher is not executable. The
+  extension provides a platform-appropriate quoting helper for the terminal
+  API and never applies shell interpolation to controller-provided values.
+- **Run dashboard configuration snapshot.** Runs that carry a
+  `config_snapshot` in their `run-state.json` now display a read-only
+  configuration section — preset, Claude runtime, and per-phase profile and
+  reasoning effort — so the exact configuration a run was initialized with is
+  visible independently of the current global preset. Legacy runs without a
+  snapshot continue rendering normally.
+- Typed `ConfigClient` and runtime validators for the controller's `config-*`
+  contract, exported from `@semanticmatter/core`. Malformed profile / preset /
+  runtime entries never crash the UI; secret-shaped keys are refused by the
+  controller and never surface in the webview.
+
+### Notes
+
+- This extension never rewrites `~/.codex/config.toml`, `~/.codex/*.config.toml`,
+  Claude credentials, or provider API keys. Selecting an autonomous Codex
+  profile applies only to autonomous-development runs (via `codex exec
+  --profile <id>`); the normal OpenAI Codex VS Code extension continues to use
+  its own OpenAI configuration.
+- Changing the Claude runtime selection applies when launching a **new**
+  session; it does not change the provider of an already-running Claude Code
+  session.
+
 ## 0.3.0
 
 Compatibility target unchanged from 0.2.0: `quaat/autonomous-development`

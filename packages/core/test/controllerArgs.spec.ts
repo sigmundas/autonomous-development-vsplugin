@@ -118,6 +118,18 @@ describe('buildControllerCommand (REFERENCE §10 adapter contract)', () => {
     assert.equal(at('--max-review-rounds'), '3');
   });
 
+  it('init appends --worktree-mode and --allow-main when requested', () => {
+    const { args } = buildControllerCommand(ctx, 'init', {
+      feature: 'F',
+      worktreeMode: 'current',
+      allowMain: true
+    });
+    const i = args.indexOf('--worktree-mode');
+    assert.ok(i >= 0);
+    assert.equal(args[i + 1], 'current');
+    assert.ok(args.includes('--allow-main'));
+  });
+
   it('init throws without a feature description', () => {
     assert.throws(() => buildControllerCommand(ctx, 'init'), /requires a feature description/);
     assert.throws(

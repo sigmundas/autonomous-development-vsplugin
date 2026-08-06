@@ -10,6 +10,10 @@ import { runGuidedSetup } from '../setup';
 import type { DetailNode, RunNode } from '../tree/runTreeItem';
 import * as artifacts from './openArtifacts';
 import * as controller from './controllerCommands';
+import * as configCmds from '../config/configCommands';
+import type { ConfigCommandDeps } from '../config/configCommands';
+import { launchClaudeForSelectedPreset } from '../config/claudeLauncher';
+import type { ConfigStore } from '../configStore';
 
 export interface CommandDeps {
   readonly context: vscode.ExtensionContext;
@@ -19,6 +23,8 @@ export interface CommandDeps {
   readonly getConfig: () => ExtensionConfig;
   readonly getStateHome: () => string;
   readonly refresh: () => void;
+  readonly configStore: ConfigStore;
+  readonly configDeps: ConfigCommandDeps;
 }
 
 type CommandArg = RunNode | DetailNode | DiscoveredRun | undefined;
@@ -93,7 +99,9 @@ export function registerCommands(deps: CommandDeps): void {
   const controllerDeps: controller.ControllerCommandDeps = {
     service,
     getConfig: deps.getConfig,
-    refresh: deps.refresh
+    refresh: deps.refresh,
+    configStore: deps.configStore,
+    configDeps: deps.configDeps
   };
 
   /** Wrap a run-scoped artifact handler with target resolution + error reporting. */
@@ -169,6 +177,44 @@ export function registerCommands(deps: CommandDeps): void {
       getStateHome: deps.getStateHome,
       log,
       refresh: deps.refresh
+    })
+  );
+
+  // Pre-run configuration commands.
+  register('autonomousDev.configure', () => configCmds.openConfigPanel(deps.configDeps));
+  register('autonomousDev.selectPreset', () => configCmds.selectPreset(deps.configDeps));
+  register('autonomousDev.configurePlanningAgent', () =>
+    configCmds.configurePlanningAgent(deps.configDeps)
+  );
+  register('autonomousDev.configureReviewAgent', () =>
+    configCmds.configureReviewAgent(deps.configDeps)
+  );
+  register('autonomousDev.configureAdversarialReviewer', () =>
+    configCmds.configureAdversarialReviewer(deps.configDeps)
+  );
+  register('autonomousDev.configureClaudeRuntime', () =>
+    configCmds.configureClaudeRuntime(deps.configDeps)
+  );
+  register('autonomousDev.showEffectiveConfiguration', () =>
+    configCmds.showEffectiveConfiguration(deps.configDeps)
+  );
+  register('autonomousDev.validateConfiguration', () =>
+    configCmds.validateConfiguration(deps.configDeps)
+  );
+  register('autonomousDev.refreshConfiguration', async () => {
+    try {
+      await deps.configStore.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      void vscode.window.showErrorMessage(`Refresh configuration failed: ${message}`);
+    }
+  });
+  register('autonomousDev.launchClaude', () =>
+    launchClaudeForSelectedPreset({
+      store: deps.configStore,
+      log,
+      getProjectRoot: deps.configDeps.getProjectRoot,
+      getControllerPath: () => deps.getConfig().controllerPath
     })
   );
 }

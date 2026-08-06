@@ -8,7 +8,7 @@ function stateText(overrides: Record<string, unknown> = {}): string {
     status: 'active',
     phase: 'implementing',
     feature: 'demo feature',
-    repository: { id: '8dd906752e640877', worktree_path: '/repo' },
+    repository: { id: '8dd906752e640877', worktree_path: '/repo', worktree_mode: 'isolated' },
     max_review_rounds: 3,
     review_round: 1,
     artifacts: { accepted_spec: 'accepted-spec.md', enhance: 'feature-spec.codex.json' },
@@ -32,6 +32,7 @@ describe('parseRunStateText (tolerant, REFERENCE §3)', () => {
     assert.equal(state?.schemaVersion, 2);
     assert.equal(state?.artifacts.acceptedSpec, 'accepted-spec.md');
     assert.equal(state?.risk.requiresAdversarialReview, true);
+    assert.equal(state?.repository.worktreeMode, 'isolated');
     assert.equal(state?.verification.checks.length, 1);
     assert.equal(state?.reviews[0]?.verdict, 'pass');
   });
@@ -129,7 +130,7 @@ describe('parseRunStateText cumulative ledgers + mode + checkpoints (run-state v
       status: 'active',
       phase: 'review',
       feature: 'add billing webhook idempotency',
-      repository: { id: 'abc123', worktree_path: '/repo' },
+      repository: { id: 'abc123', worktree_path: '/repo', worktree_mode: 'current' },
       requested_mode: 'auto',
       effective_mode: 'rigorous',
       mode_reasons: ['auto escalated to rigorous: detected billing'],
@@ -235,6 +236,7 @@ describe('parseRunStateText cumulative ledgers + mode + checkpoints (run-state v
     assert.equal(state?.requestedMode, 'auto');
     assert.equal(state?.effectiveMode, 'rigorous');
     assert.deepEqual(state?.modeReasons, ['auto escalated to rigorous: detected billing']);
+    assert.equal(state?.repository.worktreeMode, 'current');
   });
 
   it('parses cumulative findings with full provenance + preserves unknown sub-fields', () => {

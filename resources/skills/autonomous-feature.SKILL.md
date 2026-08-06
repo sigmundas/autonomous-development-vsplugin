@@ -52,12 +52,12 @@ Use ultrathink for architecture, compatibility, and review triage.
 
 1. Confirm this is a Git repository.
 2. Inspect `CLAUDE.md`, repository instructions, architecture, status, tests, and relevant files.
-3. Use `EnterWorktree` to create an isolated worktree whenever available. This is mandatory when the starting worktree contains uncommitted changes. Do not copy or delete unrelated changes.
+3. Use `EnterWorktree` to create an isolated worktree whenever available. This is mandatory when the starting worktree contains uncommitted changes. If the user explicitly asks for current-checkout mode, stay in the current branch instead of entering a worktree and require a clean feature branch before proceeding. Do not copy or delete unrelated changes.
 4. Run:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/controller.py" doctor
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/controller.py" init --feature "$ARGUMENTS"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/controller.py" init --feature "$ARGUMENTS" --worktree-mode isolated
 ```
 
 `init` prints the path to `run-state.json` and the run ID. When multiple concurrent runs are
@@ -65,6 +65,16 @@ active, pass `--run-id <run-id>` to all subsequent commands to target the correc
 
 When `doctor` reports a missing external prerequisite, mark the run blocked with the controller
 and report the exact missing prerequisite rather than bypassing it.
+
+For current-checkout mode, do not call `EnterWorktree`. Instead, keep the current branch checked
+out and run:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/controller.py" init --feature "$ARGUMENTS" --worktree-mode current
+```
+
+The controller refuses `main`/`master` unless the user also passes `--allow-main`, and it refuses
+a dirty tree in current-checkout mode.
 
 ### 2. Enhance the idea with Codex
 

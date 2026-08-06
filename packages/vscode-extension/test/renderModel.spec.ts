@@ -51,6 +51,12 @@ describe('toDashboardView', () => {
     assert.equal(view.timeline[0]?.type, 'run.created');
   });
 
+  it('surfaces current-checkout mode in repository metadata', () => {
+    const view = viewFor('currentCheckout');
+    assert.equal(view.repository.worktreeMode, 'current');
+    assert.equal(view.repository.worktreePath, '/work/current');
+  });
+
   it('attaches semantic summaries to the enhanced spec and proposed plan artifacts (F-301)', () => {
     const view = viewFor('complete');
     const enhance = view.artifacts.find((a) => a.command === 'autonomousDev.openEnhancedSpec');

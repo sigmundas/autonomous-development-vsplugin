@@ -173,6 +173,29 @@ export interface DashboardDiagnostic {
   readonly severity: string;
 }
 
+/**
+ * Config-snapshot pinned into a run at init time (schema_version 2). Rendered
+ * read-only in the dashboard so the user can see the exact preset, Claude
+ * runtime, and per-phase Codex profile/effort the run was created with —
+ * independent of the current global config.
+ */
+export interface DashboardPhaseSnapshot {
+  readonly phase: string;
+  readonly profile?: string;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+  readonly reasoningSummary?: string;
+  readonly verbosity?: string;
+}
+
+export interface DashboardConfigSnapshot {
+  readonly preset?: string;
+  readonly workflowMode?: string;
+  readonly maxReviewRounds?: number;
+  readonly claudeRuntime?: string;
+  readonly phases: readonly DashboardPhaseSnapshot[];
+}
+
 export interface DashboardView {
   readonly runId: string;
   readonly repoId: string;
@@ -186,6 +209,7 @@ export interface DashboardView {
     readonly id: string;
     readonly displayName?: string;
     readonly worktreePath?: string;
+    readonly worktreeMode?: string;
     readonly remoteDisplay?: string;
   };
   readonly createdAt?: string;
@@ -239,6 +263,8 @@ export interface DashboardView {
   readonly timeline: readonly DashboardTimelineEntry[];
   readonly truncatedTimeline: boolean;
   readonly diagnostics: readonly DashboardDiagnostic[];
+  /** Config-snapshot recorded at init (schema_version 2 runs only). */
+  readonly configSnapshot?: DashboardConfigSnapshot;
 }
 
 /** Messages the webview sends to the host. */

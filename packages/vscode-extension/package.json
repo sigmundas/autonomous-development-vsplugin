@@ -40,11 +40,7 @@
       "description": "Observer features require local filesystem access to the state home; controller actions are unavailable in virtual workspaces."
     }
   },
-  "activationEvents": [
-    "onView:autonomousDev.activeRuns",
-    "onView:autonomousDev.completedRuns",
-    "onView:autonomousDev.archivedRuns"
-  ],
+  "activationEvents": [],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -57,6 +53,12 @@
     },
     "views": {
       "autonomousDev": [
+        {
+          "id": "autonomousDev.configuration",
+          "name": "Configuration",
+          "icon": "resources/activity-icon.svg",
+          "contextualTitle": "Autonomous Development"
+        },
         {
           "id": "autonomousDev.activeRuns",
           "name": "Active Runs",
@@ -79,8 +81,12 @@
     },
     "viewsWelcome": [
       {
+        "view": "autonomousDev.configuration",
+        "contents": "Configure autonomous-development before starting a run.\n\nSelect the active preset, per-phase Codex profile, reasoning effort, and Claude runtime. Selection here never rewrites your normal OpenAI Codex configuration.\n[Configure Autonomous Development](command:autonomousDev.configure)\n[Select Preset](command:autonomousDev.selectPreset)\n[Configure Claude Runtime](command:autonomousDev.configureClaudeRuntime)\n[Set Up Controller](command:autonomousDev.setupController)"
+      },
+      {
         "view": "autonomousDev.activeRuns",
-        "contents": "No autonomous-development runs were found for this workspace.\n\nRuns are discovered from the configured state home.\n[Set Up Controller](command:autonomousDev.setupController)\n[Refresh Runs](command:autonomousDev.refreshRuns)\n\nObserver features work without a controller. See the extension settings to override the state home."
+        "contents": "No autonomous-development runs were found for this workspace.\n\nRuns are discovered from the configured state home.\n[Configure Autonomous Development](command:autonomousDev.configure)\n[Start Run](command:autonomousDev.startRun)\n[Set Up Controller](command:autonomousDev.setupController)\n[Refresh Runs](command:autonomousDev.refreshRuns)\n\nObserver features work without a controller. See the extension settings to override the state home."
       }
     ],
     "commands": [
@@ -177,24 +183,92 @@
         "title": "Set Up Controller",
         "category": "Autonomous Development",
         "icon": "$(gear)"
+      },
+      {
+        "command": "autonomousDev.configure",
+        "title": "Configure",
+        "category": "Autonomous Development",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "autonomousDev.selectPreset",
+        "title": "Select Preset",
+        "category": "Autonomous Development"
+      },
+      {
+        "command": "autonomousDev.configurePlanningAgent",
+        "title": "Configure Planning Agent",
+        "category": "Autonomous Development"
+      },
+      {
+        "command": "autonomousDev.configureReviewAgent",
+        "title": "Configure Review Agent",
+        "category": "Autonomous Development"
+      },
+      {
+        "command": "autonomousDev.configureAdversarialReviewer",
+        "title": "Configure Adversarial Reviewer",
+        "category": "Autonomous Development"
+      },
+      {
+        "command": "autonomousDev.configureClaudeRuntime",
+        "title": "Configure Claude Runtime",
+        "category": "Autonomous Development"
+      },
+      {
+        "command": "autonomousDev.showEffectiveConfiguration",
+        "title": "Show Effective Configuration",
+        "category": "Autonomous Development"
+      },
+      {
+        "command": "autonomousDev.validateConfiguration",
+        "title": "Validate Configuration",
+        "category": "Autonomous Development"
+      },
+      {
+        "command": "autonomousDev.launchClaude",
+        "title": "Launch Claude for Selected Preset",
+        "category": "Autonomous Development",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "autonomousDev.refreshConfiguration",
+        "title": "Refresh Configuration",
+        "category": "Autonomous Development",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "autonomousDev.configure",
+          "when": "view == autonomousDev.configuration",
+          "group": "navigation@0"
+        },
+        {
+          "command": "autonomousDev.refreshConfiguration",
+          "when": "view == autonomousDev.configuration",
+          "group": "navigation@1"
+        },
         {
           "command": "autonomousDev.startRun",
           "when": "view == autonomousDev.activeRuns && autonomousDev.trusted",
           "group": "navigation@0"
         },
         {
+          "command": "autonomousDev.configure",
+          "when": "view == autonomousDev.activeRuns",
+          "group": "navigation@1"
+        },
+        {
           "command": "autonomousDev.refreshRuns",
           "when": "view == autonomousDev.activeRuns || view == autonomousDev.completedRuns || view == autonomousDev.archivedRuns",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "autonomousDev.setupController",
           "when": "view == autonomousDev.activeRuns",
-          "group": "navigation@2"
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -283,6 +357,42 @@
         {
           "command": "autonomousDev.startRun",
           "when": "autonomousDev.trusted"
+        },
+        {
+          "command": "autonomousDev.configure"
+        },
+        {
+          "command": "autonomousDev.selectPreset",
+          "when": "autonomousDev.trusted"
+        },
+        {
+          "command": "autonomousDev.configurePlanningAgent",
+          "when": "autonomousDev.trusted"
+        },
+        {
+          "command": "autonomousDev.configureReviewAgent",
+          "when": "autonomousDev.trusted"
+        },
+        {
+          "command": "autonomousDev.configureAdversarialReviewer",
+          "when": "autonomousDev.trusted"
+        },
+        {
+          "command": "autonomousDev.configureClaudeRuntime",
+          "when": "autonomousDev.trusted"
+        },
+        {
+          "command": "autonomousDev.showEffectiveConfiguration"
+        },
+        {
+          "command": "autonomousDev.validateConfiguration"
+        },
+        {
+          "command": "autonomousDev.launchClaude",
+          "when": "autonomousDev.trusted"
+        },
+        {
+          "command": "autonomousDev.refreshConfiguration"
         },
         {
           "command": "autonomousDev.evaluateGates",
@@ -408,7 +518,7 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/dashboard/webview/tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/dashboard/webview/tsconfig.json && tsc --noEmit -p src/config/webview/tsconfig.json",
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.mjs",
     "build:test": "tsc -p tsconfig.test.json",

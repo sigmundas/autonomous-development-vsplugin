@@ -84,6 +84,18 @@ function renderHeader(view: DashboardView): HTMLElement {
     kv('Repository', view.repository.displayName ?? view.repository.id)
   ];
   if (view.repository.worktreePath) meta.push(kv('Worktree', view.repository.worktreePath));
+  if (view.repository.worktreeMode) {
+    meta.push(
+      kv(
+        'Checkout mode',
+        view.repository.worktreeMode === 'current'
+          ? 'current checkout'
+          : view.repository.worktreeMode === 'isolated'
+            ? 'isolated worktree'
+            : view.repository.worktreeMode
+      )
+    );
+  }
   if (view.repository.remoteDisplay) meta.push(kv('Remote', view.repository.remoteDisplay));
   if (view.createdAt) meta.push(kv('Created', view.createdAt));
   if (view.updatedAt) meta.push(kv('Updated', view.updatedAt));
@@ -522,6 +534,48 @@ function renderTimeline(view: DashboardView): HTMLElement | null {
   );
 }
 
+function renderConfigSnapshot(view: DashboardView): HTMLElement | null {
+  const snap = view.configSnapshot;
+  if (!snap) return null;
+  const rows: Child[] = [
+    kv('Preset used', snap.preset ?? '—'),
+    kv('Claude runtime', snap.claudeRuntime ?? '—'),
+    kv('Workflow mode', snap.workflowMode ?? '—'),
+    kv(
+      'Maximum review rounds',
+      snap.maxReviewRounds !== undefined ? String(snap.maxReviewRounds) : '—'
+    )
+  ];
+  for (const phase of snap.phases) {
+    const detail = [phase.profile ?? '— default —', phase.reasoningEffort ?? '—']
+      .filter(Boolean)
+      .join(' · ');
+    const model = phase.model ? ` (model: ${phase.model})` : '';
+    rows.push(kv(phaseSnapshotLabel(phase.phase), `${detail}${model}`));
+  }
+  const note = el(
+    'p',
+    { class: 'muted' },
+    ['This is the configuration snapshot recorded when the run was initialized. It does not reflect the current global preset.']
+  );
+  return section('Configuration snapshot', note, ...rows);
+}
+
+function phaseSnapshotLabel(phase: string): string {
+  switch (phase) {
+    case 'enhance':
+      return 'Enhance profile/effort';
+    case 'plan':
+      return 'Plan profile/effort';
+    case 'review':
+      return 'Review profile/effort';
+    case 'adversarial':
+      return 'Adversarial profile/effort';
+    default:
+      return `${phase} profile/effort`;
+  }
+}
+
 function renderDiagnostics(view: DashboardView): HTMLElement | null {
   if (view.diagnostics.length === 0) {
     return null;
@@ -548,6 +602,7 @@ function render(view: DashboardView): void {
     renderHeader(view),
     renderStages(view.stages),
     renderStatus(view),
+    renderConfigSnapshot(view),
     renderCumulativeFindings(view),
     renderAcceptanceCriteria(view),
     renderArtifacts(view),

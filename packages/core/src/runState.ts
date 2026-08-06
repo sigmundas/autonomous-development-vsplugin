@@ -114,6 +114,7 @@ function normalizeRepository(value: unknown): RepositoryInfo {
     canonicalRoot?: string;
     gitCommonDir?: string;
     worktreePath?: string;
+    worktreeMode?: string;
     displayName?: string;
     remoteDisplay?: string;
   } = { id: asString(value['id']) ?? '' };
@@ -123,6 +124,8 @@ function normalizeRepository(value: unknown): RepositoryInfo {
   if (gitCommonDir) info.gitCommonDir = gitCommonDir;
   const worktreePath = asNonEmptyString(value['worktree_path']);
   if (worktreePath) info.worktreePath = worktreePath;
+  const worktreeMode = asNonEmptyString(value['worktree_mode']);
+  if (worktreeMode) info.worktreeMode = worktreeMode;
   const displayName = asNonEmptyString(value['display_name']);
   if (displayName) info.displayName = displayName;
   const remoteDisplay = asNonEmptyString(value['remote_display']);

@@ -16,6 +16,7 @@ import {
   discoverTriageFiles,
   findingDispositionsFromEvents,
   parseReviewText,
+  parseRunConfigSnapshot,
   resolveArtifactPath,
   summarizeCodexArtifact,
   type AcceptanceCriteriaModel,
@@ -26,15 +27,18 @@ import {
   type DiscoveredRun,
   type FindingDisposition,
   type LoadedEventLog,
-  type ReviewRef
+  type ReviewRef,
+  type RunConfigSnapshot
 } from '@semanticmatter/core';
 
 import type {
   DashboardAcceptanceCriteria,
   DashboardArtifact,
   DashboardCodexUsage,
+  DashboardConfigSnapshot,
   DashboardCumulativeFindings,
   DashboardDiagnostic,
+  DashboardPhaseSnapshot,
   DashboardReviewRound,
   DashboardView
 } from './viewTypes';
@@ -384,6 +388,9 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
       ...(state.repository.worktreePath !== undefined
         ? { worktreePath: state.repository.worktreePath }
         : {}),
+      ...(state.repository.worktreeMode !== undefined
+        ? { worktreeMode: state.repository.worktreeMode }
+        : {}),
       ...(state.repository.remoteDisplay !== undefined
         ? { remoteDisplay: state.repository.remoteDisplay }
         : {})
@@ -447,6 +454,40 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
     artifacts,
     timeline,
     truncatedTimeline: eventLog.truncatedTail,
-    diagnostics
+    diagnostics,
+    ...(buildConfigSnapshotView(state.raw)
+      ? { configSnapshot: buildConfigSnapshotView(state.raw) as DashboardConfigSnapshot }
+      : {})
+  };
+}
+
+function buildConfigSnapshotView(raw: unknown): DashboardConfigSnapshot | undefined {
+  const snap = parseRunConfigSnapshot(raw);
+  if (!snap) return undefined;
+  return toDashboardConfigSnapshot(snap);
+}
+
+function toDashboardConfigSnapshot(snap: RunConfigSnapshot): DashboardConfigSnapshot {
+  const phases: DashboardPhaseSnapshot[] = [];
+  for (const [phase, conf] of Object.entries(snap.codex)) {
+    phases.push({
+      phase,
+      ...(conf.profile !== undefined ? { profile: conf.profile } : {}),
+      ...(conf.model !== undefined ? { model: conf.model } : {}),
+      ...(conf.reasoningEffort !== undefined ? { reasoningEffort: conf.reasoningEffort } : {}),
+      ...(conf.reasoningSummary !== undefined ? { reasoningSummary: conf.reasoningSummary } : {}),
+      ...(conf.verbosity !== undefined ? { verbosity: conf.verbosity } : {})
+    });
+  }
+  return {
+    ...(snap.preset !== undefined ? { preset: snap.preset } : {}),
+    ...(snap.workflow?.workflowMode !== undefined
+      ? { workflowMode: snap.workflow.workflowMode }
+      : {}),
+    ...(snap.workflow?.maxReviewRounds !== undefined
+      ? { maxReviewRounds: snap.workflow.maxReviewRounds }
+      : {}),
+    ...(snap.claudeRuntime !== undefined ? { claudeRuntime: snap.claudeRuntime } : {}),
+    phases
   };
 }

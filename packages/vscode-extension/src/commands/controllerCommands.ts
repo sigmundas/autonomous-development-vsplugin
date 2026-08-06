@@ -3,7 +3,13 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { DiscoveredRun } from '@semanticmatter/core';
 
+import type { ConfigStore } from '../configStore';
 import type { ExtensionConfig } from '../config';
+import {
+  buildPreflightSummary,
+  formatPreflight,
+  type ConfigCommandDeps
+} from '../config/configCommands';
 import { ControllerError, type ControllerService } from '../controller/controllerService';
 import { isWorkspaceTrusted } from '../trust';
 
@@ -11,6 +17,8 @@ export interface ControllerCommandDeps {
   readonly service: ControllerService;
   readonly getConfig: () => ExtensionConfig;
   readonly refresh: () => void;
+  readonly configStore?: ConfigStore;
+  readonly configDeps?: ConfigCommandDeps;
 }
 
 async function ensureConfigured(service: ControllerService): Promise<boolean> {
@@ -64,15 +72,28 @@ function pluginDirFromControllerPath(controllerPath: string): string | undefined
 }
 
 /**
- * Start a new autonomous-development run by launching the Claude driver in an
- * integrated terminal. The controller only stamps run state; the actual loop is
- * driven by a Claude session running the `autonomous-feature` skill, so the
- * extension hands off to that session rather than calling `controller.py init`
- * itself (which would create an orphan run the skill's own init then rejects).
+ * Extract the `run_id` printed by `controller.py init`. The controller prints
+ * a human-readable line containing the id (see docs/REFERENCE.md); we accept
+ * any UTC-timestamp-shaped run id.
+ */
+export function parseInitRunId(stdout: string): string | undefined {
+  const match = stdout.match(/[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6,}/);
+  return match ? match[0] : undefined;
+}
+
+/**
+ * Start a new autonomous-development run.
  *
- * The command is typed into the terminal but NOT executed — the user reviews it
- * and presses Enter, keeping a human in the loop before any work begins. We
- * never pass permission-bypass flags; the driver session prompts as usual.
+ * When a controller is configured, the extension calls `controller.py init`
+ * directly with the selected preset threaded as a separate `--preset <name>`
+ * argv element (never embedded in the feature text) so the run's
+ * `config_snapshot` is pinned deterministically. Then Claude Code is opened
+ * in an integrated terminal in the resulting worktree so the user can drive
+ * the initialized run.
+ *
+ * If no controller is configured, we fall back to the legacy
+ * skill-driven-init flow (no preset can be forwarded in that case, since the
+ * skill contract takes `$ARGUMENTS` as raw feature text).
  */
 export async function startRun(projectRoot: string, deps: ControllerCommandDeps): Promise<void> {
   if (!isWorkspaceTrusted()) {
@@ -81,6 +102,34 @@ export async function startRun(projectRoot: string, deps: ControllerCommandDeps)
     );
     return;
   }
+
+  // Preflight: show the effective preset/phase/runtime resolution before init.
+  let presetName: string | undefined;
+  if (deps.configStore && deps.service.isConfigured()) {
+    try {
+      await deps.configStore.refresh();
+    } catch {
+      // Non-fatal: fall through to the legacy prompt.
+    }
+    const snap = deps.configStore.current;
+    if (snap.controllerAvailable && snap.effective) {
+      const preflight = buildPreflightSummary(snap.effective, snap.profiles?.profiles);
+      const summary = formatPreflight(preflight);
+      const choice = await vscode.window.showInformationMessage(
+        `Start an autonomous-development run with:\n\n${summary}`,
+        { modal: true },
+        'Start',
+        'Configure'
+      );
+      if (choice === undefined) return;
+      if (choice === 'Configure') {
+        await vscode.commands.executeCommand('autonomousDev.configure');
+        return;
+      }
+      presetName = preflight.activePreset;
+    }
+  }
+
   const feature = await vscode.window.showInputBox({
     title: 'Start Autonomous Development Run',
     prompt: 'Describe the feature to implement',
@@ -93,7 +142,57 @@ export async function startRun(projectRoot: string, deps: ControllerCommandDeps)
     return;
   }
 
-  const pluginDir = pluginDirFromControllerPath(deps.getConfig().controllerPath);
+  const controllerPath = deps.getConfig().controllerPath;
+
+  // Deterministic path: extension calls controller.py init --preset <name>
+  // --feature <text> directly. Preset is a separate argv element (verified by
+  // buildControllerCommand's tests) so it can never be embedded in the feature
+  // text, and the resulting `feature-request.md` contains only the actual
+  // feature description.
+  if (deps.service.isConfigured() && controllerPath.length > 0) {
+    let runId: string | undefined;
+    try {
+      const result = await runWithProgress('Initializing autonomous-development run…', () =>
+        deps.service.execute('init', projectRoot, {
+          feature: feature.trim(),
+          worktreeMode: 'isolated',
+          ...(presetName && presetName.length > 0 ? { preset: presetName } : {})
+        })
+      );
+      runId = parseInitRunId(result.stdout);
+      deps.refresh();
+    } catch (err) {
+      reportError(err);
+      return;
+    }
+    // Open a bare Claude terminal in the worktree/project root so the user can
+    // drive the initialized run. We do NOT invoke the autonomous-feature skill
+    // here: the skill's own `init` step would create a second run rather than
+    // resume this one. The user (or a future skill contract that accepts a
+    // structured `--run-id`) invokes the driver session directly.
+    const pluginDir = pluginDirFromControllerPath(controllerPath);
+    const launchParts = ['claude'];
+    if (pluginDir) {
+      launchParts.push('--plugin-dir', shellSingleQuote(pluginDir));
+    }
+    const launchLine = launchParts.join(' ');
+    const terminal = vscode.window.createTerminal({
+      cwd: projectRoot,
+      name: 'Autonomous Development'
+    });
+    terminal.show();
+    terminal.sendText(launchLine, false);
+    void vscode.window.showInformationMessage(
+      runId
+        ? `Run ${runId} initialized${presetName ? ` with preset "${presetName}"` : ''}. Open the Claude terminal to drive it (skill invocation is manual so no second init occurs).`
+        : `Run initialized${presetName ? ` with preset "${presetName}"` : ''}. Open the Claude terminal to drive it.`
+    );
+    return;
+  }
+
+  // Legacy fallback: no controller configured. Hand off to the skill without a
+  // preset (the skill contract does not accept structured preset metadata).
+  const pluginDir = pluginDirFromControllerPath(controllerPath);
   const launchParts = ['claude'];
   if (pluginDir) {
     launchParts.push('--plugin-dir', shellSingleQuote(pluginDir));
@@ -106,8 +205,6 @@ export async function startRun(projectRoot: string, deps: ControllerCommandDeps)
     name: 'Autonomous Development'
   });
   terminal.show();
-  // Launch the driver session, then pre-fill the skill command without a
-  // trailing newline so the user presses Enter to confirm the launch.
   terminal.sendText(launchLine, true);
   terminal.sendText(skillCommand, false);
   void vscode.window.showInformationMessage(

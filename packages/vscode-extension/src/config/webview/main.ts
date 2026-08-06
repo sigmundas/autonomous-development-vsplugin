@@ -237,7 +237,7 @@ function renderGeneral(view: ConfigView): HTMLElement {
     el(
       'p',
       { class: 'muted small' },
-      'Workflow mode and maximum review rounds are displayed read-only. The controller config contract does not currently expose a mutating command for these fields; edit them via `config.toml` and re-run Refresh, or open the file with "Show Effective Configuration".'
+      "These settings can't be edited here yet. To change them, open your config.toml file and edit them there, then click Refresh — or use “Show Effective Configuration” to open the file directly."
     )
   );
   return wrap;

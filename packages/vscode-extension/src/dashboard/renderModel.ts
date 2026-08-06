@@ -29,7 +29,8 @@ import {
   type FindingDisposition,
   type LoadedEventLog,
   type ReviewRef,
-  type RunConfigSnapshot
+  type RunConfigSnapshot,
+  type WorkflowStage
 } from '@semanticmatter/core';
 
 import type {
@@ -419,7 +420,12 @@ export function toDashboardView(
     },
     ...(state.createdAt !== undefined ? { createdAt: state.createdAt } : {}),
     ...(state.updatedAt !== undefined ? { updatedAt: state.updatedAt } : {}),
-    stages: model.stages.map((s) => {
+    stages: refineStagesForImplementerRunning(model.stages, {
+      claudeTerminalOpen,
+      controllerPhase: state.phase,
+      hasChecks: model.verification.hasChecks,
+      status: state.status
+    }).map((s) => {
       const meta = stageMetaFor(s.id, run, state.codexRuns);
       return {
         id: s.id,
@@ -598,4 +604,101 @@ function formatEffort(effort: string): string {
     default:
       return effort;
   }
+}
+
+/**
+ * Controller phases at which the implementation action is NOT yet considered
+ * complete. Includes every phase up to and including `implementing` — while
+ * the controller is still recording any of these, an extension-managed Claude
+ * terminal for the run means Claude is doing implementation work.
+ */
+const PRE_IMPLEMENTATION_COMPLETE_PHASES: ReadonlySet<string> = new Set([
+  'initialized',
+  'enhance',
+  'enhancing',
+  'idea-enhanced',
+  'spec-accepted',
+  'plan-proposed',
+  'plan-accepted',
+  'implementing'
+]);
+
+/**
+ * Phases at which the controller has explicitly transitioned to verification.
+ * Only these count for the "controller state has transitioned to verification"
+ * condition of the Verification-active rule.
+ */
+const VERIFICATION_PHASES: ReadonlySet<string> = new Set([
+  'verification',
+  'verification-failed'
+]);
+
+export interface ImplementerRefinementFacts {
+  /** True iff an extension-managed Claude terminal is currently alive for the run. */
+  readonly claudeTerminalOpen: boolean;
+  /** The controller's authoritative phase, verbatim from run-state.json. */
+  readonly controllerPhase: string;
+  /** True iff at least one verification action has started or been recorded. */
+  readonly hasChecks: boolean;
+  /** Normalised run status (used to short-circuit for terminal statuses). */
+  readonly status: string;
+}
+
+/**
+ * Post-pass refinement of the canonical stages returned by the core evaluator.
+ * Enforces two run-scoped invariants that require VS Code-host awareness
+ * (specifically, whether an extension-managed Claude terminal is alive for the
+ * run):
+ *
+ * 1. While an extension-managed Claude terminal is alive AND the controller
+ *    has NOT recorded completion of the implementation action, Implementing
+ *    remains active. "Recorded completion" means the controller has advanced
+ *    the phase past `implementing` (or the earlier planning/enhance phases).
+ *
+ * 2. Verification may become active only when ALL THREE conditions hold:
+ *    (a) the implementation action has completed (controller phase is no
+ *        longer one of the pre-implementation-complete phases),
+ *    (b) the controller state has transitioned to verification (phase is
+ *        `verification` or `verification-failed`), and
+ *    (c) at least one verification action has started or been recorded
+ *        (hasChecks is true).
+ *    Otherwise Verification remains pending — never promoted to active by an
+ *    earlier heuristic. Verification=failed continues to be shown when checks
+ *    have run but did not all pass; that is orthogonal to the active rule.
+ */
+export function refineStagesForImplementerRunning(
+  stages: readonly WorkflowStage[],
+  facts: ImplementerRefinementFacts
+): WorkflowStage[] {
+  // Terminal statuses: no refinement — the canonical stages already encode the
+  // right story (complete / blocked / cancelled / archived).
+  if (
+    facts.status === 'complete' ||
+    facts.status === 'cancelled' ||
+    facts.status === 'archived'
+  ) {
+    return [...stages];
+  }
+
+  const implementationCompleted = !PRE_IMPLEMENTATION_COMPLETE_PHASES.has(facts.controllerPhase);
+  const verificationCanBeActive =
+    implementationCompleted && VERIFICATION_PHASES.has(facts.controllerPhase) && facts.hasChecks;
+
+  return stages.map((stage): WorkflowStage => {
+    if (stage.id === 'implementing') {
+      // Rule 1: hold Implementing at active while Claude is still working.
+      if (facts.claudeTerminalOpen && !implementationCompleted) {
+        return { ...stage, status: 'active' };
+      }
+      return stage;
+    }
+    if (stage.id === 'verification') {
+      // Rule 2: Verification may be active only when all three conditions hold.
+      if (stage.status === 'active' && !verificationCanBeActive) {
+        return { ...stage, status: 'pending' };
+      }
+      return stage;
+    }
+    return stage;
+  });
 }

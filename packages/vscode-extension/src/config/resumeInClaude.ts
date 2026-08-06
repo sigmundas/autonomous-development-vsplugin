@@ -209,18 +209,105 @@ function fallbackReasonMessage(reason: FallbackReason, runId: string): string {
   }
 }
 
+/** Prefix all extension-managed Claude terminal names share. */
+export const CLAUDE_TERMINAL_NAME_PREFIX = 'Autonomous Development · ';
+
+/** Env vars stamped onto every extension-created Claude terminal. */
+export const CLAUDE_TERMINAL_ENV_MARKER = 'AUTODEV_CLAUDE_TERMINAL';
+export const CLAUDE_TERMINAL_RUN_ENV = 'AUTODEV_RUN_ID';
+
+/**
+ * Compose the terminal name for a run. This is deterministic — it appears
+ * verbatim in {@link vscode.Terminal.name} and is what {@link parseRunIdFromTerminalName}
+ * uses to recover the run id after an extension reload.
+ */
+export function claudeTerminalNameFor(runId: string): string {
+  return `${CLAUDE_TERMINAL_NAME_PREFIX}${runId}`;
+}
+
+/**
+ * Extract the run id from a terminal name previously produced by
+ * {@link claudeTerminalNameFor}. Returns `undefined` when the name does not
+ * match — never guesses.
+ */
+export function parseRunIdFromTerminalName(name: string): string | undefined {
+  if (!name.startsWith(CLAUDE_TERMINAL_NAME_PREFIX)) return undefined;
+  const tail = name.slice(CLAUDE_TERMINAL_NAME_PREFIX.length).trim();
+  // The controller run id shape: <UTC-timestamp>-<hex>. Match liberally so a
+  // future controller schema change with a slightly different suffix still
+  // recovers the run.
+  if (!/^[0-9]{8}T[0-9]{6}Z-[0-9a-f]+$/i.test(tail)) return undefined;
+  return tail;
+}
+
+/**
+ * Known interactive-shell binary names. If a terminal's `shellPath` matches
+ * one of these, other extensions (notably `ms-python.python`) will consider
+ * the terminal "activatable" and inject Python virtualenv-activation text via
+ * {@link vscode.Terminal.sendText}. We must ensure our launcher path never
+ * matches any of these so Python skips our terminals structurally — no timing
+ * assumptions, no delayed sends.
+ */
+const KNOWN_SHELL_BINARIES = new Set([
+  'sh',
+  'bash',
+  'zsh',
+  'fish',
+  'dash',
+  'ksh',
+  'tcsh',
+  'csh',
+  'pwsh',
+  'powershell',
+  'powershell.exe',
+  'pwsh.exe',
+  'cmd',
+  'cmd.exe'
+]);
+
+export function isKnownShellBinary(candidate: string | undefined): boolean {
+  if (!candidate) return false;
+  const base = candidate.split(/[\\/]/).pop() ?? candidate;
+  return KNOWN_SHELL_BINARIES.has(base.toLowerCase());
+}
+
 /**
  * Build the {@link vscode.TerminalOptions} used to launch (or focus) a Claude
  * runtime for a run. Extracted for tests — we assert on shellPath/shellArgs/cwd
  * without ever spawning a real terminal.
+ *
+ * The options set here structurally block Python auto-activation from ever
+ * reaching Claude:
+ *
+ * 1. `shellPath` is the launcher binary itself (not `/bin/bash` or another
+ *    interactive shell). The Python extension only injects activation into
+ *    terminals whose shell it recognizes; a launcher path fails that check.
+ * 2. Deterministic env markers (`AUTODEV_RUN_ID`, `AUTODEV_CLAUDE_TERMINAL=1`)
+ *    let observers — and this extension's own registry recovery — identify
+ *    the terminal even without cooperating shells.
+ * 3. The terminal name follows a stable pattern parsed by
+ *    {@link parseRunIdFromTerminalName}, so post-reload recovery works even
+ *    when the in-memory registry is empty.
  */
 export function buildTerminalOptions(plan: ResumeInClaudePlan): vscode.TerminalOptions {
   const [shellPath, ...shellArgs] = plan.launcherArgv;
+  if (isKnownShellBinary(shellPath)) {
+    throw new Error(
+      `Refusing to launch Claude via a known shell binary (${shellPath}). ` +
+        `The runtime launcher must be a non-shell process so Python auto-activation ` +
+        `cannot inject "source .../activate" into Claude's input.`
+    );
+  }
+  const env: Record<string, string> = {
+    [CLAUDE_TERMINAL_ENV_MARKER]: '1',
+    [CLAUDE_TERMINAL_RUN_ENV]: plan.run.runId
+  };
   return {
-    name: `Autonomous Development · ${plan.run.runId}`,
+    name: claudeTerminalNameFor(plan.run.runId),
     cwd: plan.worktreePath,
     ...(shellPath !== undefined ? { shellPath } : {}),
-    shellArgs
+    shellArgs,
+    env
   };
 }
 
@@ -258,9 +345,13 @@ export async function resumeRunInClaude(
   }
 
   // Focus-existing wins over spawn-new so repeated clicks never duplicate.
+  // Recover first: this catches terminals that were opened before the current
+  // extension activation (window reload) OR by another code path that went
+  // straight through vscode.window.createTerminal without the registry.
   const registry = deps.registry;
-  if (registry && registry.has(run.runId)) {
-    if (registry.focus(run.runId)) {
+  if (registry) {
+    registry.recoverExistingTerminals();
+    if (registry.has(run.runId) && registry.focus(run.runId)) {
       deps.log.info(`resumeInClaude focus existing terminal for run=${run.runId}`);
       return undefined;
     }

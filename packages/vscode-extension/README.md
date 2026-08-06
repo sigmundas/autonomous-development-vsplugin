@@ -183,12 +183,11 @@ provider of an already-running session.
 
 ### Workflow mode and maximum review rounds
 
-Workflow mode and `max_review_rounds` are shown in the Configuration editor
-read-only. The controller config contract does not currently expose mutating
-commands for these fields — they are edited by hand in `config.toml` (or by
-selecting a different preset whose `workflow_mode` differs). If a future
-`config-set-workflow` command is added, the extension will consume it and
-expose editable controls in the same panel.
+You can see the workflow mode and maximum review rounds in the Configuration
+editor, but you can't change them from there yet. To change them, either edit
+`config.toml` by hand, or pick a different preset that already has the values
+you want. When we add a way to edit these directly, the panel will grow the
+right controls for them.
 
 ### Selecting an autonomous Codex profile
 

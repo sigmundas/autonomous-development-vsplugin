@@ -55,6 +55,14 @@ export function activate(context: vscode.ExtensionContext): AutonomousDevApi {
   context.subscriptions.push(configStore);
   const terminalRegistry = new ClaudeTerminalRegistry();
   context.subscriptions.push(terminalRegistry);
+  // Rebuild registry state from currently open terminals BEFORE any command
+  // that might spawn a duplicate. This keeps "Focus Claude terminal"
+  // available after a window reload for pre-existing extension-owned
+  // terminals.
+  const recovered = terminalRegistry.recoverExistingTerminals();
+  if (recovered.length > 0) {
+    log.info(`Recovered ${recovered.length} Claude terminal(s) after activation.`);
+  }
 
   const configDeps: ConfigCommandDeps = {
     context,

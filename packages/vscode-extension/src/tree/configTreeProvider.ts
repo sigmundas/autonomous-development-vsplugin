@@ -116,11 +116,11 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<ConfigTreeNod
       runtime !== undefined && (!runtime.launcherExists || !runtime.launcherExecutable);
     nodes.push({
       kind: 'claude',
-      label: 'Claude runtime',
+      label: 'Claude runtime (for new runs)',
       description: runtime ? friendlyRuntimeLabel(runtime) : (runtimeName ?? '— not selected —'),
       tooltip: runtime?.launcher
-        ? `${friendlyRuntimeLabel(runtime)} · launcher: ${runtime.launcher}${runtimeInvalid ? ' (unavailable)' : ''}`
-        : 'No Claude runtime has been selected.',
+        ? `${friendlyRuntimeLabel(runtime)} · launcher: ${runtime.launcher}${runtimeInvalid ? ' (unavailable)' : ''}\n\nThis runtime applies to NEW runs. Existing runs use the runtime recorded in their config_snapshot; use "Resume in Claude" from a run's tree item or dashboard to continue it with its snapshotted runtime.`
+        : 'No Claude runtime has been selected for new runs.',
       icon: runtimeInvalid
         ? new vscode.ThemeIcon('warning', new vscode.ThemeColor('charts.yellow'))
         : new vscode.ThemeIcon('rocket'),

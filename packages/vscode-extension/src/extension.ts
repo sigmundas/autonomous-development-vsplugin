@@ -3,6 +3,7 @@ import type { DiscoveredRun, RunGroup } from '@semanticmatter/core';
 
 import { registerCommands } from './commands';
 import { CONFIG_SECTION, readConfig, type ExtensionConfig } from './config';
+import { ClaudeTerminalRegistry } from './config/claudeTerminalRegistry';
 import { ConfigStore } from './configStore';
 import { ConfigClient } from './controller/configClient';
 import { ControllerService } from './controller/controllerService';
@@ -52,6 +53,8 @@ export function activate(context: vscode.ExtensionContext): AutonomousDevApi {
   const configClient = new ConfigClient(service);
   const configStore = new ConfigStore(configClient, resolveProjectRoot, log);
   context.subscriptions.push(configStore);
+  const terminalRegistry = new ClaudeTerminalRegistry();
+  context.subscriptions.push(terminalRegistry);
 
   const configDeps: ConfigCommandDeps = {
     context,
@@ -114,7 +117,8 @@ export function activate(context: vscode.ExtensionContext): AutonomousDevApi {
     getStateHome: () => store.activeStateHome,
     refresh: () => store.refresh(),
     configStore,
-    configDeps
+    configDeps,
+    terminalRegistry
   });
 
   // File watching → debounced refresh (respecting the autoRefresh setting).

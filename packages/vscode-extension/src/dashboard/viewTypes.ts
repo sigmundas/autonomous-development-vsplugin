@@ -27,6 +27,16 @@ export interface DashboardStage {
   readonly title: string;
   readonly status: string;
   readonly detail?: string;
+  /**
+   * Optional compact secondary metadata for the stage — e.g.
+   * "Azure · GPT-5.6 Sol · High" for a Codex-owned stage, or
+   * "Microsoft Foundry · Claude" for the Claude-owned implementation stage.
+   * Only populated when the run's config_snapshot or Codex telemetry provides
+   * the values verbatim; never invented.
+   */
+  readonly meta?: string;
+  /** Tooltip for the meta line (e.g. underlying profile id). */
+  readonly metaTooltip?: string;
 }
 
 export interface DashboardGate {
@@ -205,12 +215,22 @@ export interface DashboardView {
   readonly phase: string;
   readonly isTerminal: boolean;
   readonly blockingReason?: string;
+  /**
+   * True iff an extension-tracked Claude terminal exists for this run. Rendered
+   * to switch the header button between "Resume in Claude" and
+   * "Focus Claude terminal", and to suppress duplicate session creation.
+   */
+  readonly claudeTerminalOpen: boolean;
   readonly repository: {
     readonly id: string;
     readonly displayName?: string;
     readonly worktreePath?: string;
     readonly worktreeMode?: string;
     readonly remoteDisplay?: string;
+    /** Current git branch as recorded at init. */
+    readonly branch?: string;
+    /** Baseline commit sha as recorded at init (full sha; abbreviate in UI). */
+    readonly baselineCommit?: string;
   };
   readonly createdAt?: string;
   readonly updatedAt?: string;
@@ -265,6 +285,25 @@ export interface DashboardView {
   readonly diagnostics: readonly DashboardDiagnostic[];
   /** Config-snapshot recorded at init (schema_version 2 runs only). */
   readonly configSnapshot?: DashboardConfigSnapshot;
+  /**
+   * Compact "current activity" summary computed from existing controller data
+   * only — phase, next-action summary, last controller note (if any), whether
+   * an extension-created Claude terminal is currently open for this run, and
+   * the run's last-update timestamp. This is deliberately NOT a live-stream
+   * proxy: token streaming, Claude tool-event capture, and Codex app-server
+   * integration are DEFERRED to a later iteration.
+   */
+  readonly currentActivity: DashboardCurrentActivity;
+}
+
+/** Currently observable activity, from data the extension already has. */
+export interface DashboardCurrentActivity {
+  readonly phase: string;
+  readonly nextActionMessage: string;
+  readonly latestNote?: string;
+  readonly updatedAt?: string;
+  /** Whether an extension-created Claude terminal is currently alive for this run. */
+  readonly claudeTerminalOpen: boolean;
 }
 
 /** Messages the webview sends to the host. */

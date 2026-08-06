@@ -318,7 +318,16 @@ function renderClaude(view: ConfigView): HTMLElement {
   }
   wrap.appendChild(grid);
 
-  const launch = el('button', { type: 'button', class: 'primary' }, 'Launch Claude for Selected Preset') as HTMLButtonElement;
+  const launch = el(
+    'button',
+    {
+      type: 'button',
+      class: 'primary',
+      title:
+        'Launch a fresh Claude Code session using the currently selected runtime. This starts an unbound session — to continue an existing run, use "Resume in Claude" from the Active Runs view.'
+    },
+    'Launch Claude for New Runs'
+  ) as HTMLButtonElement;
   launch.disabled =
     !view.trusted ||
     !view.claudeRuntime ||

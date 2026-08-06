@@ -145,6 +145,7 @@ export {
 } from './workflow/nextAction';
 export {
   deriveStages,
+  stageForControllerPhase,
   type WorkflowStage,
   type StageId,
   type StageStatus,

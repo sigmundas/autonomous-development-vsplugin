@@ -227,9 +227,21 @@
       },
       {
         "command": "autonomousDev.launchClaude",
-        "title": "Launch Claude for Selected Preset",
+        "title": "Launch Claude for New Runs",
         "category": "Autonomous Development",
         "icon": "$(rocket)"
+      },
+      {
+        "command": "autonomousDev.resumeInClaude",
+        "title": "Resume in Claude",
+        "category": "Autonomous Development",
+        "icon": "$(play)"
+      },
+      {
+        "command": "autonomousDev.focusClaudeTerminal",
+        "title": "Focus Claude Terminal",
+        "category": "Autonomous Development",
+        "icon": "$(terminal-view-icon)"
       },
       {
         "command": "autonomousDev.refreshConfiguration",
@@ -273,9 +285,19 @@
       ],
       "view/item/context": [
         {
+          "command": "autonomousDev.resumeInClaude",
+          "when": "viewItem == autonomousDev.run.active && autonomousDev.trusted",
+          "group": "inline@0"
+        },
+        {
           "command": "autonomousDev.openDashboard",
           "when": "viewItem =~ /^autonomousDev.run/",
           "group": "inline@1"
+        },
+        {
+          "command": "autonomousDev.resumeInClaude",
+          "when": "viewItem == autonomousDev.run.active && autonomousDev.trusted",
+          "group": "1_open@0"
         },
         {
           "command": "autonomousDev.openDashboard",
@@ -389,6 +411,14 @@
         },
         {
           "command": "autonomousDev.launchClaude",
+          "when": "autonomousDev.trusted"
+        },
+        {
+          "command": "autonomousDev.resumeInClaude",
+          "when": "autonomousDev.trusted"
+        },
+        {
+          "command": "autonomousDev.focusClaudeTerminal",
           "when": "autonomousDev.trusted"
         },
         {

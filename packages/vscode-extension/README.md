@@ -208,6 +208,31 @@ and it never persists Claude credentials or provider API keys.
 | A phase profile is flagged as missing or invalid                      | `$CODEX_HOME` does not contain the selected profile                | Install / fix the Codex profile under `~/.codex/`.                        |
 | "Launcher not executable" when launching Claude                       | The launcher file exists but its executable bit is not set         | `chmod +x` the launcher, then re-run **Launch Claude for Selected Preset**. |
 
+## Deferred: live activity streaming
+
+The dashboard's **Current activity** section is deliberately limited to data the
+extension already has: the controller's authoritative phase, next-action
+summary, the latest run-state note (if any), whether the extension is currently
+tracking a Claude terminal for the run, and the run's last-update timestamp.
+
+Detailed live activity such as:
+
+    Reading ui/main_window.py
+    Running tests/test_reference_plot.py
+    Codex finding created
+
+requires additive integrations planned for future iterations:
+
+- **Live RunEvent emission** from the controller into the extension host
+  (currently the extension polls `run-state.json` and reads `events.jsonl` at
+  refresh time).
+- A **Claude Agent SDK adapter** to observe Claude's tool use in real time.
+- A **Codex app-server adapter** to observe Codex's per-tool events.
+
+These are explicitly deferred from the current change. This iteration keeps the
+existing snapshot/polling interface accurate and usable rather than inventing a
+new live-event protocol.
+
 ## Key settings
 
 `autonomousDev.controllerPath`, `autonomousDev.stateHome`,

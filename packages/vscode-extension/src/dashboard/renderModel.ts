@@ -20,6 +20,7 @@ import {
   resolveArtifactPath,
   summarizeCodexArtifact,
   type AcceptanceCriteriaModel,
+  type CodexRun,
   type CodexUsageModel,
   type CumulativeAcceptanceCriterion,
   type CumulativeFinding,
@@ -263,8 +264,18 @@ function codexUsageView(model: CodexUsageModel): DashboardCodexUsage {
   };
 }
 
+export interface ToDashboardViewOptions {
+  /** True when the extension is currently tracking a Claude terminal for this run. */
+  readonly claudeTerminalOpen?: boolean;
+}
+
 /** Build the dashboard view for a run. Returns a diagnostics-only shell when unparsed. */
-export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): DashboardView {
+export function toDashboardView(
+  run: DiscoveredRun,
+  eventLog: LoadedEventLog,
+  options: ToDashboardViewOptions = {}
+): DashboardView {
+  const claudeTerminalOpen = options.claudeTerminalOpen === true;
   const diagnostics = collectDiagnostics(run, eventLog);
   const timeline = eventLog.timeline.map((e) => ({
     sequence: e.sequence,
@@ -285,6 +296,7 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
       status: 'unknown',
       phase: '',
       isTerminal: false,
+      claudeTerminalOpen,
       repository: { id: run.repoId },
       stages: [],
       reviewBudget: { max: 0, consumed: 0, remaining: 0 },
@@ -314,7 +326,12 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
       artifacts: [],
       timeline,
       truncatedTimeline: eventLog.truncatedTail,
-      diagnostics
+      diagnostics,
+      currentActivity: {
+        phase: '',
+        nextActionMessage: '',
+        claudeTerminalOpen
+      }
     };
   }
 
@@ -371,6 +388,8 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
     attempts: model.verification.attemptsByName[c.name]?.length ?? 1
   }));
 
+  const latestNote = state.notes.length > 0 ? state.notes[state.notes.length - 1] : undefined;
+
   return {
     runId: state.runId,
     repoId: run.repoId,
@@ -379,6 +398,7 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
     status: model.status,
     phase: model.phase,
     isTerminal: model.isTerminal,
+    claudeTerminalOpen,
     ...(model.blockingReason !== undefined ? { blockingReason: model.blockingReason } : {}),
     repository: {
       id: state.repository.id,
@@ -393,16 +413,23 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
         : {}),
       ...(state.repository.remoteDisplay !== undefined
         ? { remoteDisplay: state.repository.remoteDisplay }
-        : {})
+        : {}),
+      ...(state.baseline?.branch ? { branch: state.baseline.branch } : {}),
+      ...(state.baseline?.commit ? { baselineCommit: state.baseline.commit } : {})
     },
     ...(state.createdAt !== undefined ? { createdAt: state.createdAt } : {}),
     ...(state.updatedAt !== undefined ? { updatedAt: state.updatedAt } : {}),
-    stages: model.stages.map((s) => ({
-      id: s.id,
-      title: s.title,
-      status: s.status,
-      ...(s.detail !== undefined ? { detail: s.detail } : {})
-    })),
+    stages: model.stages.map((s) => {
+      const meta = stageMetaFor(s.id, run, state.codexRuns);
+      return {
+        id: s.id,
+        title: s.title,
+        status: s.status,
+        ...(s.detail !== undefined ? { detail: s.detail } : {}),
+        ...(meta.line !== undefined ? { meta: meta.line } : {}),
+        ...(meta.tooltip !== undefined ? { metaTooltip: meta.tooltip } : {})
+      };
+    }),
     reviewBudget: model.reviewBudget,
     verification: {
       hasChecks: model.verification.hasChecks,
@@ -457,7 +484,14 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
     diagnostics,
     ...(buildConfigSnapshotView(state.raw)
       ? { configSnapshot: buildConfigSnapshotView(state.raw) as DashboardConfigSnapshot }
-      : {})
+      : {}),
+    currentActivity: {
+      phase: model.phase,
+      nextActionMessage: model.recommendedNextAction.message,
+      ...(latestNote !== undefined ? { latestNote } : {}),
+      ...(state.updatedAt !== undefined ? { updatedAt: state.updatedAt } : {}),
+      claudeTerminalOpen
+    }
   };
 }
 
@@ -490,4 +524,78 @@ function toDashboardConfigSnapshot(snap: RunConfigSnapshot): DashboardConfigSnap
     ...(snap.claudeRuntime !== undefined ? { claudeRuntime: snap.claudeRuntime } : {}),
     phases
   };
+}
+
+/**
+ * Compact secondary metadata for a stage in the workflow timeline. For
+ * Codex-owned stages this pulls provider/model + reasoning-effort from the
+ * config_snapshot and prefers the concrete model reported by Codex telemetry
+ * when present. For the Claude-owned implementation stage it uses the
+ * snapshotted Claude runtime name. When neither is available, it returns
+ * empty fields — the webview then skips the meta line for that stage.
+ *
+ * Nothing here is invented: we only surface values that are already present in
+ * the run's state, config_snapshot, or codex_runs telemetry.
+ */
+export function stageMetaFor(
+  stageId: string,
+  run: DiscoveredRun,
+  codexRuns: readonly CodexRun[]
+): { line?: string; tooltip?: string } {
+  const snap = parseRunConfigSnapshot(run.state?.raw);
+  if (stageId === 'implementing') {
+    if (!snap) return {};
+    if (!snap.claudeRuntime) return {};
+    return { line: snap.claudeRuntime };
+  }
+  const phaseKey = codexPhaseForStage(stageId);
+  if (!phaseKey) return {};
+  const conf = snap?.codex[phaseKey];
+  const telemetry = codexRuns.find((r) => r.phase === phaseKey);
+  const model = telemetry?.model ?? conf?.model;
+  const effort = telemetry?.reasoningEffort ?? conf?.reasoningEffort;
+  const profileId = conf?.profile;
+  const parts: string[] = [];
+  if (model) parts.push(model);
+  else if (profileId) parts.push(profileId);
+  if (effort) parts.push(formatEffort(effort));
+  if (parts.length === 0) {
+    return snap === undefined ? { line: 'configuration unavailable' } : {};
+  }
+  const line = parts.join(' · ');
+  const tooltip = profileId ? `Profile: ${profileId}` : undefined;
+  return tooltip !== undefined ? { line, tooltip } : { line };
+}
+
+function codexPhaseForStage(stageId: string): string | undefined {
+  switch (stageId) {
+    case 'idea-enhanced':
+      return 'enhance';
+    case 'plan-proposed':
+    case 'plan-accepted':
+      return 'plan';
+    case 'independent-review':
+      return 'review';
+    case 'adversarial-review':
+      return 'adversarial';
+    default:
+      return undefined;
+  }
+}
+
+function formatEffort(effort: string): string {
+  switch (effort) {
+    case 'minimal':
+      return 'Minimal';
+    case 'low':
+      return 'Low';
+    case 'medium':
+      return 'Medium';
+    case 'high':
+      return 'High';
+    case 'xhigh':
+      return 'XHigh';
+    default:
+      return effort;
+  }
 }

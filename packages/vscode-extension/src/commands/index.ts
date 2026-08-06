@@ -13,6 +13,8 @@ import * as controller from './controllerCommands';
 import * as configCmds from '../config/configCommands';
 import type { ConfigCommandDeps } from '../config/configCommands';
 import { launchClaudeForSelectedPreset } from '../config/claudeLauncher';
+import { resumeRunInClaude } from '../config/resumeInClaude';
+import type { ClaudeTerminalRegistry } from '../config/claudeTerminalRegistry';
 import type { ConfigStore } from '../configStore';
 
 export interface CommandDeps {
@@ -25,6 +27,7 @@ export interface CommandDeps {
   readonly refresh: () => void;
   readonly configStore: ConfigStore;
   readonly configDeps: ConfigCommandDeps;
+  readonly terminalRegistry: ClaudeTerminalRegistry;
 }
 
 type CommandArg = RunNode | DetailNode | DiscoveredRun | undefined;
@@ -130,7 +133,7 @@ export function registerCommands(deps: CommandDeps): void {
   register(
     'autonomousDev.openDashboard',
     runScoped((run) => {
-      DashboardPanel.show(context.extensionUri, store, deps.getConfig, log, run);
+      DashboardPanel.show(context.extensionUri, store, deps.getConfig, log, run, deps.terminalRegistry);
     })
   );
   register('autonomousDev.refreshRuns', () => deps.refresh());
@@ -215,6 +218,27 @@ export function registerCommands(deps: CommandDeps): void {
       log,
       getProjectRoot: deps.configDeps.getProjectRoot,
       getControllerPath: () => deps.getConfig().controllerPath
+    })
+  );
+  register(
+    'autonomousDev.resumeInClaude',
+    runScoped(async (run) => {
+      await resumeRunInClaude(run, {
+        store: deps.configStore,
+        log,
+        registry: deps.terminalRegistry,
+        getControllerPath: () => deps.getConfig().controllerPath
+      });
+    })
+  );
+  register(
+    'autonomousDev.focusClaudeTerminal',
+    runScoped((run) => {
+      if (!deps.terminalRegistry.focus(run.runId)) {
+        void vscode.window.showInformationMessage(
+          `No active Claude terminal is being tracked for run ${run.runId}.`
+        );
+      }
     })
   );
 }

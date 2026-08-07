@@ -11,7 +11,11 @@ import {
 import type { ConfigStore } from '../configStore';
 import type { OutputLog } from '../output';
 import { isWorkspaceTrusted } from '../trust';
-import { buildLauncherArgs, formatLauncherCommand } from './claudeLauncher';
+import {
+  buildLauncherArgs,
+  formatLauncherCommand,
+  withAutonomousClaudePermissions
+} from './claudeLauncher';
 import type { ClaudeTerminalRegistry } from './claudeTerminalRegistry';
 
 export interface ResumeInClaudeDeps {
@@ -180,7 +184,9 @@ export function planResumeInClaude(
 ): ResumeInClaudePlan {
   const { runtime, source } = resolveRuntimeForRun(run, runtimes, globalRuntimeName);
   const pluginDir = pluginDirFromControllerPath(controllerPath);
-  const launcherArgv: string[] = runtime ? [...buildLauncherArgs(runtime)] : [];
+  const launcherArgv: string[] = runtime
+    ? withAutonomousClaudePermissions(buildLauncherArgs(runtime))
+    : [];
   if (pluginDir && runtime) {
     launcherArgv.push('--plugin-dir', pluginDir);
   }

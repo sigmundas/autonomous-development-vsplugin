@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import {
   ClaudeTerminalRegistry,
+  type ClaudeTerminalIdentity,
   type ClaudeTerminalRegistryWindow
 } from '../src/config/claudeTerminalRegistry';
 import { claudeTerminalNameFor } from '../src/config/resumeInClaude';
@@ -61,6 +62,8 @@ class FakeWindow implements ClaudeTerminalRegistryWindow {
 
 const RUN_A = '20260806T091439Z-aaaaaaaaaaaa';
 const RUN_B = '20260806T091439Z-bbbbbbbbbbbb';
+const ID_A: ClaudeTerminalIdentity = { repositoryId: 'repo-a', runId: RUN_A };
+const ID_B: ClaudeTerminalIdentity = { repositoryId: 'repo-a', runId: RUN_B };
 
 describe('ClaudeTerminalRegistry — recovery after extension reload', () => {
   it('reconstructs registry from vscode.window.terminals on recoverExistingTerminals', () => {
@@ -68,7 +71,7 @@ describe('ClaudeTerminalRegistry — recovery after extension reload', () => {
     // Simulate: terminals already exist BEFORE the registry (extension) was
     // constructed. This is the post-reload state.
     win.terminalList.push({
-      name: claudeTerminalNameFor(RUN_A),
+      name: claudeTerminalNameFor(ID_A),
       sendText: () => undefined,
       show: () => undefined,
       hide: () => undefined,
@@ -84,23 +87,23 @@ describe('ClaudeTerminalRegistry — recovery after extension reload', () => {
 
     const reg = new ClaudeTerminalRegistry(win);
     const recovered = reg.recoverExistingTerminals();
-    assert.deepEqual([...recovered].sort(), [RUN_A]);
-    assert.equal(reg.has(RUN_A), true);
-    assert.equal(reg.has('other-run'), false);
+    assert.deepEqual(recovered, [ID_A]);
+    assert.equal(reg.has(ID_A), true);
+    assert.equal(reg.has({ repositoryId: 'repo-a', runId: 'other-run' }), false);
     reg.dispose();
   });
 
   it('re-registration is idempotent — recovering twice does not fire duplicate change events', () => {
     const win = new FakeWindow();
     win.terminalList.push({
-      name: claudeTerminalNameFor(RUN_A),
+      name: claudeTerminalNameFor(ID_A),
       sendText: () => undefined,
       show: () => undefined,
       hide: () => undefined,
       dispose: () => undefined
     } as unknown as vscode.Terminal);
     const reg = new ClaudeTerminalRegistry(win);
-    const events: string[] = [];
+    const events: ClaudeTerminalIdentity[] = [];
     reg.onDidChange((r) => events.push(r));
     reg.recoverExistingTerminals();
     reg.recoverExistingTerminals();
@@ -112,10 +115,33 @@ describe('ClaudeTerminalRegistry — recovery after extension reload', () => {
   it('onDidOpenTerminal auto-registers a terminal opened elsewhere with the right name', () => {
     const win = new FakeWindow();
     const reg = new ClaudeTerminalRegistry(win);
-    assert.equal(reg.has(RUN_B), false);
+    assert.equal(reg.has(ID_B), false);
     // Simulate the terminal API firing an open event for a matching name.
-    win.spawn(claudeTerminalNameFor(RUN_B));
-    assert.equal(reg.has(RUN_B), true);
+    win.spawn(claudeTerminalNameFor(ID_B));
+    assert.equal(reg.has(ID_B), true);
+    reg.dispose();
+  });
+
+  it('recovers equal run ids into separate repository-qualified bindings', () => {
+    const win = new FakeWindow();
+    const repoA = { repositoryId: 'repo-a', runId: RUN_A };
+    const repoB = { repositoryId: 'repo-b', runId: RUN_A };
+    const terminalA = win.spawn(claudeTerminalNameFor(repoA));
+    const terminalB = win.spawn(claudeTerminalNameFor(repoB));
+    const reg = new ClaudeTerminalRegistry(win);
+
+    assert.deepEqual(reg.recoverExistingTerminals(), [repoA, repoB]);
+    assert.strictEqual(reg.get(repoA), terminalA);
+    assert.strictEqual(reg.get(repoB), terminalB);
+    reg.dispose();
+  });
+
+  it('does not recover the legacy run-id-only terminal name', () => {
+    const win = new FakeWindow();
+    win.spawn(`Autonomous Development · ${RUN_A}`);
+    const reg = new ClaudeTerminalRegistry(win);
+    assert.deepEqual(reg.recoverExistingTerminals(), []);
+    assert.equal(reg.has(ID_A), false);
     reg.dispose();
   });
 });
@@ -128,13 +154,13 @@ describe('ClaudeTerminalRegistry — duplicate spawn prevention', () => {
     const spawnOnce = (): vscode.Terminal => {
       // Look for existing registered terminal first — mirrors resumeRunInClaude.
       reg.recoverExistingTerminals();
-      if (reg.has(RUN_A)) {
-        reg.focus(RUN_A);
-        return reg.get(RUN_A) as vscode.Terminal;
+      if (reg.has(ID_A)) {
+        reg.focus(ID_A);
+        return reg.get(ID_A) as vscode.Terminal;
       }
       spawnCount += 1;
-      const t = win.spawn(claudeTerminalNameFor(RUN_A));
-      reg.register(RUN_A, t);
+      const t = win.spawn(claudeTerminalNameFor(ID_A));
+      reg.register(ID_A, t);
       return t;
     };
     const first = spawnOnce();
@@ -152,29 +178,29 @@ describe('ClaudeTerminalRegistry — terminal close then legitimate re-resume', 
     let spawnCount = 0;
     const spawnOnce = (): vscode.Terminal => {
       reg.recoverExistingTerminals();
-      if (reg.has(RUN_A)) {
-        reg.focus(RUN_A);
-        return reg.get(RUN_A) as vscode.Terminal;
+      if (reg.has(ID_A)) {
+        reg.focus(ID_A);
+        return reg.get(ID_A) as vscode.Terminal;
       }
       spawnCount += 1;
-      const t = win.spawn(claudeTerminalNameFor(RUN_A));
-      reg.register(RUN_A, t);
+      const t = win.spawn(claudeTerminalNameFor(ID_A));
+      reg.register(ID_A, t);
       return t;
     };
 
     const first = spawnOnce();
-    assert.equal(reg.has(RUN_A), true);
+    assert.equal(reg.has(ID_A), true);
 
     // User closes the terminal — the FakeWindow.dispose fires closeEmitter,
     // and the registry drops the entry.
     first.dispose();
-    assert.equal(reg.has(RUN_A), false);
+    assert.equal(reg.has(ID_A), false);
 
     // A legitimate new Resume click now spawns a fresh terminal.
     const second = spawnOnce();
     assert.equal(spawnCount, 2);
     assert.notStrictEqual(first, second);
-    assert.equal(reg.has(RUN_A), true);
+    assert.equal(reg.has(ID_A), true);
     reg.dispose();
   });
 });

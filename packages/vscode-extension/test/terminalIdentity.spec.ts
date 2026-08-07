@@ -9,11 +9,12 @@ import {
   buildTerminalOptions,
   claudeTerminalNameFor,
   isKnownShellBinary,
-  parseRunIdFromTerminalName,
+  parseClaudeTerminalIdentity,
   planResumeInClaude
 } from '../src/config/resumeInClaude';
 
 const RUN_ID = '20260806T091439Z-cafefacefade';
+const IDENTITY = { repositoryId: 'repo', runId: RUN_ID };
 const RUNTIME: ClaudeRuntime = {
   name: 'azure-claude',
   displayName: 'Azure · Claude',
@@ -58,22 +59,21 @@ function makeRun(): DiscoveredRun {
   } as unknown as DiscoveredRun;
 }
 
-describe('claudeTerminalNameFor / parseRunIdFromTerminalName', () => {
-  it('produces a deterministic name containing the run id', () => {
-    const name = claudeTerminalNameFor(RUN_ID);
-    assert.equal(name, `${CLAUDE_TERMINAL_NAME_PREFIX}${RUN_ID}`);
-    assert.equal(parseRunIdFromTerminalName(name), RUN_ID);
+describe('claudeTerminalNameFor / parseClaudeTerminalIdentity', () => {
+  it('round-trips a deterministic repository-qualified identity', () => {
+    const name = claudeTerminalNameFor(IDENTITY);
+    assert.equal(name, `${CLAUDE_TERMINAL_NAME_PREFIX}repo · ${RUN_ID}`);
+    assert.deepEqual(parseClaudeTerminalIdentity(name), IDENTITY);
   });
   it('round-trips only for names produced by claudeTerminalNameFor', () => {
-    assert.equal(parseRunIdFromTerminalName('bash'), undefined);
-    assert.equal(parseRunIdFromTerminalName('Task - build'), undefined);
+    assert.equal(parseClaudeTerminalIdentity('bash'), undefined);
+    assert.equal(parseClaudeTerminalIdentity('Task - build'), undefined);
     assert.equal(
-      parseRunIdFromTerminalName(`${CLAUDE_TERMINAL_NAME_PREFIX}not-a-run-id`),
+      parseClaudeTerminalIdentity(`${CLAUDE_TERMINAL_NAME_PREFIX}not-a-run-id`),
       undefined
     );
-    // Almost-valid but wrong shape (missing time part) → not accepted.
     assert.equal(
-      parseRunIdFromTerminalName(`${CLAUDE_TERMINAL_NAME_PREFIX}20260806-abcdef`),
+      parseClaudeTerminalIdentity(`${CLAUDE_TERMINAL_NAME_PREFIX}repo · bad/run/id`),
       undefined
     );
   });
@@ -115,8 +115,8 @@ describe('buildTerminalOptions — Python auto-activation defenses', () => {
     const run = makeRun();
     const plan = planResumeInClaude(run, [RUNTIME], undefined, '', '/work/wt');
     const options = buildTerminalOptions(plan);
-    assert.equal(options.name, `${CLAUDE_TERMINAL_NAME_PREFIX}${RUN_ID}`);
-    assert.equal(parseRunIdFromTerminalName(String(options.name)), RUN_ID);
+    assert.equal(options.name, `${CLAUDE_TERMINAL_NAME_PREFIX}repo · ${RUN_ID}`);
+    assert.deepEqual(parseClaudeTerminalIdentity(String(options.name)), IDENTITY);
   });
 
   it('refuses to launch via a known interactive shell (structural block on Python auto-activation)', () => {

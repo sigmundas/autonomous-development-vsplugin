@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { confineToDirectory, loadEventLog, type DiscoveredRun } from '@semanticmatter/core';
 
 import type { ClaudeTerminalRegistry } from '../config/claudeTerminalRegistry';
+import { terminalIdentityForRun } from '../config/claudeTerminalIdentity';
 import type { ExtensionConfig } from '../config';
 import type { OutputLog } from '../output';
 import type { RunStore } from '../runStore';
@@ -58,9 +59,15 @@ export class DashboardPanel {
     // so the header button switches between "Resume in Claude" and
     // "Focus Claude terminal" without waiting for a store poll.
     this.terminalRegistry.onDidChange(
-      (runId) => {
+      (identity) => {
         const run = this.currentRun();
-        if (run && run.runId === runId) this.render();
+        if (
+          run &&
+          run.repoId === identity.repositoryId &&
+          run.runId === identity.runId
+        ) {
+          this.render();
+        }
       },
       null,
       this.disposables
@@ -123,7 +130,7 @@ export class DashboardPanel {
     const view = reconcileTimeline(
       key ? this.lastViewByKey.get(key) : undefined,
       toDashboardView(run, eventLog, {
-        claudeTerminalOpen: this.terminalRegistry.has(run.runId)
+        claudeTerminalOpen: this.terminalRegistry.has(terminalIdentityForRun(run))
       })
     );
     if (key) {

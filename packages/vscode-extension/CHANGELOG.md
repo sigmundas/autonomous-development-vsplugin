@@ -41,6 +41,13 @@ documented here. This project adheres to [Semantic Versioning](https://semver.or
   runtime entries never crash the UI; secret-shaped keys are refused by the
   controller and never surface in the webview.
 
+### Changed
+
+- **Compact workflow-stage metadata.** Profile/model and reasoning-effort text
+  now renders on one secondary line beneath the stage title, never breaks
+  identifiers mid-token, and ellipsizes at narrow dashboard widths. Hovering
+  exposes the complete value and profile detail.
+
 ### Notes
 
 - This extension never rewrites `~/.codex/config.toml`, `~/.codex/*.config.toml`,
@@ -51,6 +58,21 @@ documented here. This project adheres to [Semantic Versioning](https://semver.or
 - Changing the Claude runtime selection applies when launching a **new**
   session; it does not change the provider of an already-running Claude Code
   session.
+- A manual end-to-end smoke test validated that **Start Autonomous Run** opens
+  one configured Claude session, the selected skill owns controller init,
+  bounded `dontAsk` permissions remain active, Azure-backed Codex planning
+  succeeds with codex-cli 0.146.1, and the workflow completes. **Cancel and
+  Resume were not exercised and are not claimed as manually validated.**
+- codex-cli 0.147.0 is currently incompatible with the validated Azure
+  Responses profile because it sends an empty `functions` namespace
+  description. The `/models` decode warning visible in both versions is not the
+  fatal error. The temporary workaround is to pin 0.146.1; the authoritative
+  explanation and verification command are in the
+  [controller README](https://github.com/sigmundas/autonomous-development#azure-openai--codex-cli-compatibility).
+- The initial generic Start terminal is created before skill-owned init assigns
+  a run id, so the dashboard may show **Claude terminal: not open** while that
+  terminal is running. Terminal-to-run association remains a separate follow-up
+  and is unchanged in this release.
 
 ## 0.3.0
 

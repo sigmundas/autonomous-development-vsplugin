@@ -1,6 +1,6 @@
 # SemanticMatter Autonomous Development
 
-A read-only observer and visual control plane for the
+An observer and visual control plane for the
 [`quaat/autonomous-development`](https://github.com/quaat/autonomous-development)
 autonomous feature-development workflow.
 
@@ -27,9 +27,11 @@ even when a run was started outside it.
 - Open any artifact in a normal editor; **compare** original↔accepted spec and
   proposed↔accepted plan in the **native diff editor**; click a finding to jump to
   its source line.
-- **Safe controller actions** (start run, evaluate gates, accept drift, cancel,
-  archive) that run via argument arrays (never a shell), confirm before mutating,
-  and are disabled in untrusted workspaces.
+- **Start Autonomous Run** launches one configured Claude session with bounded
+  autonomous permissions; the selected skill owns controller initialization.
+- **Safe controller actions** (evaluate gates, accept drift, cancel, archive)
+  run via argument arrays (never a shell), confirm before mutating, and are
+  disabled in untrusted workspaces.
 - Live, debounced refresh on state changes; malformed artifacts produce a
   diagnostic instead of crashing the view.
 
@@ -179,6 +181,12 @@ and it never persists Claude credentials or provider API keys.
 | Dropdowns are empty                                                   | The controller succeeded but no profiles/presets/runtimes are defined | Add them to `config.toml` (see the controller's `docs/config-contract.md`) |
 | A phase profile is flagged as missing or invalid                      | `$CODEX_HOME` does not contain the selected profile                | Install / fix the Codex profile under `~/.codex/`.                        |
 | "Launcher not executable" when launching Claude                       | The launcher file exists but its executable bit is not set         | `chmod +x` the launcher, then re-run **Start Autonomous Run**.            |
+| Azure Codex fails on its first real phase with codex-cli 0.147.0      | Upstream Responses Lite tool serialization is incompatible with Azure | Temporarily pin codex-cli 0.146.1; see the [controller compatibility note](https://github.com/sigmundas/autonomous-development#azure-openai--codex-cli-compatibility). |
+
+With the validated Azure profile, a large `/models` catalog-decode warning can
+still appear under codex-cli 0.146.1. That warning is non-fatal when the direct
+Codex invocation continues to `turn.completed` with exit code 0; it does not
+indicate a VSIX preset or profile-selection failure.
 
 ## Deferred: live activity streaming
 
@@ -201,6 +209,14 @@ requires additive integrations planned for future iterations:
 - A **Claude Agent SDK adapter** to observe Claude's tool use in real time.
 - A **Codex app-server adapter** to observe Codex's per-tool events.
 
+There is also a known Start-session association gap: the extension opens the
+generic Autonomous Claude terminal before the selected skill creates a
+controller run, so that terminal does not yet carry a run id. The dashboard may
+therefore say **Claude terminal: not open** while the initial Claude session is
+visibly running. This is a display/association limitation, not evidence that
+the session stopped; terminal-to-run association requires a separate design
+pass.
+
 These are explicitly deferred from the current change. This iteration keeps the
 existing snapshot/polling interface accurate and usable rather than inventing a
 new live-event protocol.
@@ -213,6 +229,13 @@ new live-event protocol.
 `autonomousDev.loadCompletedRuns`, `autonomousDev.loadArchivedRuns`.
 
 See the repository for architecture, protocol, and security documentation.
+
+## Development
+
+The extension runtime remains compatible with the Node version declared in the
+manifest, but the current integration-test toolchain requires **Node 22 or
+newer** (`@vscode/test-electron` 3.1.0). Use Node 22+ when installing
+development dependencies or running `npm run test:integration`.
 
 ## License
 

@@ -251,7 +251,7 @@ function renderStages(stages: readonly DashboardStage[]): HTMLElement {
           'span',
           {
             class: 'stage-meta',
-            ...(s.metaTooltip ? { title: s.metaTooltip } : {})
+            title: s.metaTooltip ? `${s.meta}\n${s.metaTooltip}` : s.meta
           },
           [s.meta]
         )

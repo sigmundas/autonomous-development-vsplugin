@@ -222,15 +222,23 @@ h3 {
   outline-offset: 2px;
 }
 .stage-meta {
+  grid-column: 2;
+  min-width: 0;
   color: var(--vscode-descriptionForeground);
   font-size: 0.85rem;
-  margin-left: 1.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .stage-title-row {
   display: flex;
   gap: 0.5rem;
   align-items: baseline;
   flex: 1;
+  min-width: 0;
+}
+.stage-status {
+  flex-shrink: 0;
 }
 .stage {
   display: grid;

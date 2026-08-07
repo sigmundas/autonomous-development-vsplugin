@@ -231,14 +231,21 @@ h3 {
   white-space: nowrap;
 }
 .stage-title-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.5rem;
   align-items: baseline;
-  flex: 1;
   min-width: 0;
 }
+.stage-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .stage-status {
-  flex-shrink: 0;
+  justify-self: end;
+  white-space: nowrap;
 }
 .stage {
   display: grid;

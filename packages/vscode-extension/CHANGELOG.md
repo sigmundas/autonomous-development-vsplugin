@@ -30,6 +30,11 @@ documented here. This project adheres to [Semantic Versioning](https://semver.or
   initialization. The extension no longer calls `controller.py init` from the
   normal Start path. `autonomousDev.openAutonomousClaude` and the hidden legacy
   `autonomousDev.launchClaude` ID are aliases for the same implementation.
+- **Late terminal binding and explicit Resume.** The skill-owned Start terminal
+  becomes associated with its run only from unambiguous, repository-scoped
+  discovery evidence. A live terminal is focused and reused; after it exits,
+  **Resume in Claude** opens one replacement and automatically invokes the
+  controller plugin's dedicated `autonomous-resume` skill with the exact run ID.
 - **Run dashboard configuration snapshot.** Runs that carry a
   `config_snapshot` in their `run-state.json` now display a read-only
   configuration section — preset, Claude runtime, and per-phase profile and
@@ -47,6 +52,8 @@ documented here. This project adheres to [Semantic Versioning](https://semver.or
   now renders on one secondary line beneath the stage title, never breaks
   identifiers mid-token, and ellipsizes at narrow dashboard widths. Hovering
   exposes the complete value and profile detail.
+- Workflow status labels now occupy a consistent right-aligned column; long
+  stage titles ellipsize without displacing or wrapping the status.
 
 ### Notes
 
@@ -58,21 +65,25 @@ documented here. This project adheres to [Semantic Versioning](https://semver.or
 - Changing the Claude runtime selection applies when launching a **new**
   session; it does not change the provider of an already-running Claude Code
   session.
-- A manual end-to-end smoke test validated that **Start Autonomous Run** opens
-  one configured Claude session, the selected skill owns controller init,
-  bounded `dontAsk` permissions remain active, Azure-backed Codex planning
-  succeeds with codex-cli 0.146.1, and the workflow completes. **Cancel and
-  Resume were not exercised and are not claimed as manually validated.**
+- A manual Extension Development Host smoke/acceptance test validated the
+  documented Start, late-binding/Focus, Resume, and Cancel flows. Start opened
+  one configured session and remained skill-owned; late binding reused it;
+  Resume opened exactly one replacement, automatically invoked
+  `autonomous-resume` for the same run without calling `init`, and returned the
+  UI to Focus; Cancel moved the run from Active Runs to terminal/completed runs.
+  Bounded `dontAsk` permissions remained active. This was not exhaustive
+  certification.
+- The same manual smoke test validated the Azure Codex workflow with codex-cli
+  0.146.1.
 - codex-cli 0.147.0 is currently incompatible with the validated Azure
   Responses profile because it sends an empty `functions` namespace
   description. The `/models` decode warning visible in both versions is not the
   fatal error. The temporary workaround is to pin 0.146.1; the authoritative
   explanation and verification command are in the
   [controller README](https://github.com/sigmundas/autonomous-development#azure-openai--codex-cli-compatibility).
-- The initial generic Start terminal is created before skill-owned init assigns
-  a run id, so the dashboard may show **Claude terminal: not open** while that
-  terminal is running. Terminal-to-run association remains a separate follow-up
-  and is unchanged in this release.
+- The controller plugin's `skills/autonomous-resume/SKILL.md` is the
+  authoritative Resume recovery and safety contract; the extension README
+  summarizes how the UI invokes it.
 
 ## 0.3.0
 

@@ -156,6 +156,24 @@ extension—initializes and drives the controller run. The older
 `autonomousDev.openAutonomousClaude` and `autonomousDev.launchClaude` command IDs
 are compatibility aliases for the same Start implementation.
 
+Once the selected skill creates its run, the extension associates that original
+terminal with the new run using the repository identity and the run IDs observed
+before launch. If the evidence is ambiguous, it leaves the terminal unbound
+rather than guessing. The run action then becomes **Focus Claude Terminal** and
+reuses the same live terminal.
+
+If that terminal exits while the controller run remains active, the action
+becomes **Resume in Claude**. Resume opens one replacement session and submits
+`/autonomous-development:autonomous-resume <run-id>` automatically. That
+dedicated skill recovers the exact existing run from controller state; it never
+calls `init`, invokes a Start skill, or depends on the previous conversation.
+The user does not type `continue` or invoke a Start skill again.
+`AUTODEV_RUN_ID` is still set as terminal identity metadata, but the explicit
+skill argument is the model-visible workflow identity. Resume uses the
+configured absolute plugin/controller root and the same bounded `dontAsk`
+permission policy as Start. The full safety and recovery contract lives in the
+controller plugin's `skills/autonomous-resume/SKILL.md`.
+
 ### Workflow mode and maximum review rounds
 
 You can see the workflow mode and maximum review rounds in the Configuration
@@ -209,17 +227,10 @@ requires additive integrations planned for future iterations:
 - A **Claude Agent SDK adapter** to observe Claude's tool use in real time.
 - A **Codex app-server adapter** to observe Codex's per-tool events.
 
-There is also a known Start-session association gap: the extension opens the
-generic Autonomous Claude terminal before the selected skill creates a
-controller run, so that terminal does not yet carry a run id. The dashboard may
-therefore say **Claude terminal: not open** while the initial Claude session is
-visibly running. This is a display/association limitation, not evidence that
-the session stopped; terminal-to-run association requires a separate design
-pass.
-
-These are explicitly deferred from the current change. This iteration keeps the
-existing snapshot/polling interface accurate and usable rather than inventing a
-new live-event protocol.
+The extension still uses the existing snapshot/polling interface for workflow
+activity. Terminal association is intentionally narrower: it observes only
+repository-scoped, baseline-aware run discovery and never infers live tool
+events from the terminal.
 
 ## Key settings
 

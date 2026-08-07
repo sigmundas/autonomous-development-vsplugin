@@ -13,14 +13,15 @@ import {
   openAutonomousClaudeInWorkspace,
   planOpenAutonomousClaude
 } from '../src/config/openAutonomousClaude';
-import { parseRunIdFromTerminalName } from '../src/config/resumeInClaude';
+import { parseClaudeTerminalIdentity } from '../src/config/resumeInClaude';
 
 /**
  * The "Open Autonomous Claude" affordance replaces the previous "Start New
  * Run" button. It launches the configured Claude runtime in the selected
  * repository so the plugin loads via the launcher itself — but MUST NOT
  * create a controller run, MUST NOT send text into Claude, and MUST NOT
- * be attributed to any run by the terminal registry or the dashboard.
+ * initially be attributed to any run. It is registered as an unbound
+ * repository candidate and acquires a run id only from later discovery.
  *
  * These tests exercise those invariants at unit level so future edits can't
  * silently re-introduce run creation, sendText, or run-scoped terminal
@@ -47,7 +48,7 @@ const RUNTIME: ClaudeRuntime = {
 
 describe('openAutonomousClaude — terminal name identity', () => {
   it('uses a name prefix that does not collide with the run-scoped prefix', () => {
-    // parseRunIdFromTerminalName looks for `Autonomous Development · <runId>`.
+    // The Resume parser requires an encoded repository + run identity.
     // Our prefix is intentionally different so the run-indexed registry can
     // never mistake this terminal for a run's terminal.
     assert.notEqual(AUTONOMOUS_CLAUDE_TERMINAL_NAME_PREFIX, 'Autonomous Development · ');
@@ -82,7 +83,7 @@ describe('openAutonomousClaude — terminal name identity', () => {
     ];
     for (const name of candidates) {
       assert.equal(
-        parseRunIdFromTerminalName(name),
+        parseClaudeTerminalIdentity(name),
         undefined,
         `run-scoped parser must not accept: ${name}`
       );
@@ -348,11 +349,11 @@ describe('openAutonomousClaudeInWorkspace — spawn behaviour', () => {
     assert.equal(fake.sendTextCalls, 0, 'sendText must never be called');
   });
 
-  it('does NOT touch the run-indexed ClaudeTerminalRegistry', async () => {
+  it('does not invent a run-indexed binding when no unbound evidence is supplied', async () => {
     const fake = makeFakeTerminal();
     const store = makeFakeConfigStore({ runtimeName: RUNTIME.name, runtime: RUNTIME });
     const registry = new ClaudeTerminalRegistry();
-    const runIdsBefore = new Set(registry.activeRunIds());
+    const identitiesBefore = registry.activeIdentities();
     await openAutonomousClaudeInWorkspace('/work/sample-repo', {
       store: store as never,
       log: makeSilentLog() as never,
@@ -361,12 +362,26 @@ describe('openAutonomousClaudeInWorkspace — spawn behaviour', () => {
       showInfo: () => Promise.resolve(undefined),
       showError: () => Promise.resolve(undefined)
     });
-    const runIdsAfter = new Set(registry.activeRunIds());
-    assert.deepEqual(
-      Array.from(runIdsAfter).sort(),
-      Array.from(runIdsBefore).sort(),
-      'no new run should appear in the registry'
-    );
+    assert.deepEqual(registry.activeIdentities(), identitiesBefore);
+    registry.dispose();
+  });
+
+  it('registers the Start terminal unbound without adding AUTODEV_RUN_ID', async () => {
+    const fake = makeFakeTerminal();
+    const store = makeFakeConfigStore({ runtimeName: RUNTIME.name, runtime: RUNTIME });
+    const registry = new ClaudeTerminalRegistry();
+    await openAutonomousClaudeInWorkspace('/work/sample-repo', {
+      store: store as never,
+      log: makeSilentLog() as never,
+      getControllerPath: () => '',
+      registry,
+      unboundRepository: { repositoryId: 'repo-a', getKnownRunIds: () => ['older-run'] },
+      createTerminal: () => fake.terminal,
+      showInfo: () => Promise.resolve(undefined),
+      showError: () => Promise.resolve(undefined)
+    });
+    assert.equal(registry.isUnbound(fake.terminal), true);
+    assert.deepEqual(registry.activeIdentities(), []);
     registry.dispose();
   });
 
@@ -388,7 +403,7 @@ describe('openAutonomousClaudeInWorkspace — spawn behaviour', () => {
     const reg = new ClaudeTerminalRegistry(fakeWindow);
     const recovered = reg.recoverExistingTerminals();
     assert.deepEqual(recovered, [], 'the registry must not adopt Autonomous Claude terminals');
-    assert.equal(reg.activeRunIds().length, 0);
+    assert.equal(reg.activeIdentities().length, 0);
     reg.dispose();
   });
 

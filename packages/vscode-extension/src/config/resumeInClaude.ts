@@ -13,10 +13,15 @@ import type { OutputLog } from '../output';
 import { isWorkspaceTrusted } from '../trust';
 import {
   buildLauncherArgs,
-  formatLauncherCommand,
   withAutonomousClaudePermissions
 } from './claudeLauncher';
-import type { ClaudeTerminalRegistry } from './claudeTerminalRegistry';
+import {
+  type ClaudeTerminalRegistry
+} from './claudeTerminalRegistry';
+import {
+  terminalIdentityForRun,
+  type ClaudeTerminalIdentity
+} from './claudeTerminalIdentity';
 
 export interface ResumeInClaudeDeps {
   readonly store: ConfigStore;
@@ -33,10 +38,6 @@ export interface ResumeInClaudeDeps {
    * up the real VS Code terminal API.
    */
   readonly createTerminal?: (options: vscode.TerminalOptions) => vscode.Terminal;
-  /**
-   * Clipboard writer. Extracted for the same reason.
-   */
-  readonly writeClipboard?: (text: string) => Promise<void>;
   /**
    * Notification adapter. Extracted for the same reason.
    */
@@ -64,17 +65,30 @@ export interface ResumeInClaudePlan {
   readonly pluginDir?: string;
   /** Argv the launcher will be spawned with (launcher first, then args, then --plugin-dir). */
   readonly launcherArgv: readonly string[];
-  /** POSIX/Windows-safely quoted single-line rendering of `launcherArgv`. */
-  readonly commandLine: string;
-  /** Deterministic instruction to hand to Claude (clipboard/terminal). */
+  /** Resume-only safety contract appended to Claude's system prompt. */
   readonly instruction: string;
+  /** First user prompt, which explicitly invokes the dedicated Resume skill. */
+  readonly bootstrapPrompt: string;
 }
 
 const RESUME_INSTRUCTION_TEMPLATE = (runId: string): string =>
   [
-    `Resume autonomous-development run ${runId}. Do not initialize a new run.`,
-    'Run controller status and next-action --json, then continue from the recorded phase.'
+    `This session was launched by an explicit Resume action for existing autonomous-development run ${runId}.`,
+    'Do not call controller.py init, do not initialize or create a run, and do not use a Start skill.',
+    `Use only /autonomous-development:autonomous-resume ${runId}; recover state from the plugin-root controller with that explicit run ID.`
   ].join('\n');
+
+export const AUTONOMOUS_RESUME_SKILL = '/autonomous-development:autonomous-resume';
+
+// Mirrors core scripts/state.py validate_run_id: safe as one path/prompt token,
+// including migrated runs whose IDs predate the timestamp format.
+const CONTROLLER_RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
+export function autonomousResumeBootstrapPrompt(runId: string): string {
+  if (!CONTROLLER_RUN_ID.test(runId)) {
+    throw new Error(`Refusing to bootstrap Resume with an invalid controller run ID: ${runId}`);
+  }
+  return `${AUTONOMOUS_RESUME_SKILL} ${runId}`;
+}
 
 /**
  * Extract the config snapshot from a run's raw state. Returns undefined for
@@ -184,11 +198,19 @@ export function planResumeInClaude(
 ): ResumeInClaudePlan {
   const { runtime, source } = resolveRuntimeForRun(run, runtimes, globalRuntimeName);
   const pluginDir = pluginDirFromControllerPath(controllerPath);
+  const instruction = RESUME_INSTRUCTION_TEMPLATE(run.runId);
+  const bootstrapPrompt = autonomousResumeBootstrapPrompt(run.runId);
   const launcherArgv: string[] = runtime
     ? withAutonomousClaudePermissions(buildLauncherArgs(runtime))
     : [];
   if (pluginDir && runtime) {
     launcherArgv.push('--plugin-dir', pluginDir);
+  }
+  if (runtime) {
+    // Claude's positional prompt is submitted automatically when the
+    // interactive session starts. The system addition makes the Resume-only
+    // boundary model-visible even before the dedicated skill expands.
+    launcherArgv.push('--append-system-prompt', instruction, bootstrapPrompt);
   }
   return {
     run,
@@ -197,8 +219,8 @@ export function planResumeInClaude(
     worktreePath,
     ...(pluginDir !== undefined ? { pluginDir } : {}),
     launcherArgv,
-    commandLine: runtime ? formatLauncherCommand(launcherArgv) : '',
-    instruction: RESUME_INSTRUCTION_TEMPLATE(run.runId)
+    instruction,
+    bootstrapPrompt
   };
 }
 
@@ -215,8 +237,9 @@ function fallbackReasonMessage(reason: FallbackReason, runId: string): string {
   }
 }
 
-/** Prefix all extension-managed Claude terminal names share. */
+/** Prefix all extension-managed, repository-qualified Resume terminal names share. */
 export const CLAUDE_TERMINAL_NAME_PREFIX = 'Autonomous Development · ';
+const CLAUDE_TERMINAL_NAME_SEPARATOR = ' · ';
 
 /** Env vars stamped onto every extension-created Claude terminal. */
 export const CLAUDE_TERMINAL_ENV_MARKER = 'AUTODEV_CLAUDE_TERMINAL';
@@ -224,26 +247,38 @@ export const CLAUDE_TERMINAL_RUN_ENV = 'AUTODEV_RUN_ID';
 
 /**
  * Compose the terminal name for a run. This is deterministic — it appears
- * verbatim in {@link vscode.Terminal.name} and is what {@link parseRunIdFromTerminalName}
- * uses to recover the run id after an extension reload.
+ * verbatim in {@link vscode.Terminal.name} and is what
+ * {@link parseClaudeTerminalIdentity} uses after an extension reload.
  */
-export function claudeTerminalNameFor(runId: string): string {
-  return `${CLAUDE_TERMINAL_NAME_PREFIX}${runId}`;
+export function claudeTerminalNameFor(identity: ClaudeTerminalIdentity): string {
+  return (
+    CLAUDE_TERMINAL_NAME_PREFIX +
+    encodeURIComponent(identity.repositoryId) +
+    CLAUDE_TERMINAL_NAME_SEPARATOR +
+    encodeURIComponent(identity.runId)
+  );
 }
 
 /**
- * Extract the run id from a terminal name previously produced by
+ * Extract the qualified identity from a terminal name previously produced by
  * {@link claudeTerminalNameFor}. Returns `undefined` when the name does not
  * match — never guesses.
  */
-export function parseRunIdFromTerminalName(name: string): string | undefined {
+export function parseClaudeTerminalIdentity(
+  name: string
+): ClaudeTerminalIdentity | undefined {
   if (!name.startsWith(CLAUDE_TERMINAL_NAME_PREFIX)) return undefined;
   const tail = name.slice(CLAUDE_TERMINAL_NAME_PREFIX.length).trim();
-  // The controller run id shape: <UTC-timestamp>-<hex>. Match liberally so a
-  // future controller schema change with a slightly different suffix still
-  // recovers the run.
-  if (!/^[0-9]{8}T[0-9]{6}Z-[0-9a-f]+$/i.test(tail)) return undefined;
-  return tail;
+  const parts = tail.split(CLAUDE_TERMINAL_NAME_SEPARATOR);
+  if (parts.length !== 2) return undefined;
+  try {
+    const repositoryId = decodeURIComponent(parts[0] ?? '');
+    const runId = decodeURIComponent(parts[1] ?? '');
+    if (!repositoryId || !CONTROLLER_RUN_ID.test(runId)) return undefined;
+    return { repositoryId, runId };
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -291,8 +326,8 @@ export function isKnownShellBinary(candidate: string | undefined): boolean {
  * 2. Deterministic env markers (`AUTODEV_RUN_ID`, `AUTODEV_CLAUDE_TERMINAL=1`)
  *    let observers — and this extension's own registry recovery — identify
  *    the terminal even without cooperating shells.
- * 3. The terminal name follows a stable pattern parsed by
- *    {@link parseRunIdFromTerminalName}, so post-reload recovery works even
+ * 3. The terminal name follows a stable repository-qualified pattern parsed by
+ *    {@link parseClaudeTerminalIdentity}, so post-reload recovery works even
  *    when the in-memory registry is empty.
  */
 export function buildTerminalOptions(plan: ResumeInClaudePlan): vscode.TerminalOptions {
@@ -309,7 +344,7 @@ export function buildTerminalOptions(plan: ResumeInClaudePlan): vscode.TerminalO
     [CLAUDE_TERMINAL_RUN_ENV]: plan.run.runId
   };
   return {
-    name: claudeTerminalNameFor(plan.run.runId),
+    name: claudeTerminalNameFor(terminalIdentityForRun(plan.run)),
     cwd: plan.worktreePath,
     ...(shellPath !== undefined ? { shellPath } : {}),
     shellArgs,
@@ -336,6 +371,17 @@ export async function resumeRunInClaude(
   run: DiscoveredRun,
   deps: ResumeInClaudeDeps
 ): Promise<ResumeInClaudePlan | undefined> {
+  const identity = terminalIdentityForRun(run);
+  if (deps.registry) {
+    return deps.registry.withRunLock(identity, () => runResumeInClaude(run, deps));
+  }
+  return runResumeInClaude(run, deps);
+}
+
+async function runResumeInClaude(
+  run: DiscoveredRun,
+  deps: ResumeInClaudeDeps
+): Promise<ResumeInClaudePlan | undefined> {
   const showError = deps.showError ?? ((msg: string) => vscode.window.showErrorMessage(msg));
   const showInfo = deps.showInfo ?? ((msg: string) => vscode.window.showInformationMessage(msg));
 
@@ -355,15 +401,22 @@ export async function resumeRunInClaude(
   // extension activation (window reload) OR by another code path that went
   // straight through vscode.window.createTerminal without the registry.
   const registry = deps.registry;
+  const identity = terminalIdentityForRun(run);
   if (registry) {
     registry.recoverExistingTerminals();
-    if (registry.has(run.runId) && registry.focus(run.runId)) {
+    if (registry.has(identity) && registry.focus(identity)) {
       deps.log.info(`resumeInClaude focus existing terminal for run=${run.runId}`);
       return undefined;
     }
   }
 
   await deps.store.refresh();
+  // While config refresh is in flight, the run-store watcher can discover and
+  // late-bind the original Start terminal. Re-check before spawning.
+  if (registry?.has(identity) && registry.focus(identity)) {
+    deps.log.info(`resumeInClaude focus terminal bound during refresh for run=${run.runId}`);
+    return undefined;
+  }
   const snap = deps.store.current;
   if (!snap.controllerAvailable) {
     void showError(
@@ -410,22 +463,16 @@ export async function resumeRunInClaude(
     void showError(`Claude runtime launcher is not executable: ${runtime.launcher}`);
     return plan;
   }
+  if (!plan.pluginDir) {
+    void showError(
+      'The configured controller path must point to the plugin scripts/controller.py so the autonomous-resume skill can be loaded.'
+    );
+    return plan;
+  }
 
   deps.log.info(
     `resumeInClaude run=${run.runId} source=${plan.source.kind} runtime=${runtime.name} launcher=${runtime.launcher}`
   );
-
-  // Deterministic instruction: written to the clipboard so no natural-language
-  // Claude prompt is ever assembled from controller-provided strings, and no
-  // sendText race with the terminal's own shell activation can occur.
-  const writeClipboard = deps.writeClipboard ?? ((text) => vscode.env.clipboard.writeText(text));
-  try {
-    await writeClipboard(plan.instruction);
-  } catch (err) {
-    deps.log.warn(
-      `resumeInClaude: clipboard write failed: ${err instanceof Error ? err.message : String(err)}`
-    );
-  }
 
   const create =
     deps.createTerminal ??
@@ -436,14 +483,14 @@ export async function resumeRunInClaude(
   // sendText into an interactive shell suffered from.
   const terminal = create(buildTerminalOptions(plan));
   terminal.show();
-  registry?.register(run.runId, terminal);
+  registry?.register(identity, terminal);
 
   const fallbackNote =
     plan.source.kind === 'fallback'
       ? ` (${fallbackReasonMessage(plan.source.reason, run.runId).replace(/\.$/, '')})`
       : '';
   void showInfo(
-    `Resuming run ${run.runId} with ${runtime.displayName ?? runtime.name}${fallbackNote}. The deterministic resume instruction is on your clipboard — paste it into Claude and press Enter.`
+    `Resuming run ${run.runId} with ${runtime.displayName ?? runtime.name}${fallbackNote}. The autonomous-resume workflow was submitted automatically.`
   );
   return plan;
 }
@@ -453,7 +500,7 @@ export function focusClaudeTerminal(
   run: DiscoveredRun,
   registry: ClaudeTerminalRegistry
 ): boolean {
-  return registry.focus(run.runId);
+  return registry.focus(terminalIdentityForRun(run));
 }
 
 function terminalStatus(status: string): boolean {

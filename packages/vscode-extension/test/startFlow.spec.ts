@@ -46,13 +46,27 @@ describe('normal Start flow', () => {
     assert.equal(openCalls, 0);
   });
 
-  it('does not route normal Start through controllerCommands.startRun', () => {
+  it('has one production Start path and no controller-owned init helper', () => {
+    const extensionRoot = path.resolve(__dirname, '../..');
     const commandsSource = readFileSync(
-      path.resolve(__dirname, '../../src/commands/index.ts'),
+      path.join(extensionRoot, 'src/commands/index.ts'),
+      'utf8'
+    );
+    const controllerCommandsSource = readFileSync(
+      path.join(extensionRoot, 'src/commands/controllerCommands.ts'),
+      'utf8'
+    );
+    const launcherSource = readFileSync(
+      path.join(extensionRoot, 'src/config/claudeLauncher.ts'),
       'utf8'
     );
     assert.doesNotMatch(commandsSource, /controller\.startRun\s*\(/);
     assert.match(commandsSource, /openAutonomousClaudeInWorkspace\s*\(/);
+    assert.doesNotMatch(controllerCommandsSource, /export async function startRun/);
+    assert.doesNotMatch(controllerCommandsSource, /\.execute\(['"]init['"]/);
+    assert.doesNotMatch(controllerCommandsSource, /\.sendText\s*\(/);
+    assert.doesNotMatch(launcherSource, /launchClaudeForSelectedPreset|LaunchClaudeDeps/);
+    assert.doesNotMatch(launcherSource, /\.sendText\s*\(/);
   });
 
   it('keeps one primary Start action and hides compatibility aliases from the palette', () => {

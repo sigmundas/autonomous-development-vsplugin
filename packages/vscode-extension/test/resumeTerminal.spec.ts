@@ -68,7 +68,10 @@ describe('buildTerminalOptions — direct launcher process (no shell interpositi
       'azure',
       ...autonomousClaudePermissionArgs(),
       '--plugin-dir',
-      '/opt/autodev'
+      '/opt/autodev',
+      '--append-system-prompt',
+      plan.instruction,
+      plan.bootstrapPrompt
     ]);
     // cwd is the run worktree.
     assert.equal(options.cwd, '/work/wt');
@@ -89,7 +92,10 @@ describe('buildTerminalOptions — direct launcher process (no shell interpositi
     assert.deepEqual(options.shellArgs, [
       '--profile',
       'azure',
-      ...autonomousClaudePermissionArgs()
+      ...autonomousClaudePermissionArgs(),
+      '--append-system-prompt',
+      plan.instruction,
+      plan.bootstrapPrompt
     ]);
   });
 

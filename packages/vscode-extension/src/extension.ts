@@ -55,6 +55,21 @@ export function activate(context: vscode.ExtensionContext): AutonomousDevApi {
   context.subscriptions.push(configStore);
   const terminalRegistry = new ClaudeTerminalRegistry();
   context.subscriptions.push(terminalRegistry);
+  // Run discovery is the first point where a Start terminal's skill-owned run
+  // id exists. Reconcile against the launch-time repository baseline before
+  // dashboards and commands consume registry truth.
+  store.onDidChange(
+    () =>
+      terminalRegistry.reconcileRuns(
+        store.allRuns.map((run) => ({
+          repositoryId: run.repoId,
+          runId: run.runId,
+          active: run.group === 'active'
+        }))
+      ),
+    null,
+    context.subscriptions
+  );
   // Rebuild registry state from currently open terminals BEFORE any command
   // that might spawn a duplicate. This keeps "Focus Claude terminal"
   // available after a window reload for pre-existing extension-owned

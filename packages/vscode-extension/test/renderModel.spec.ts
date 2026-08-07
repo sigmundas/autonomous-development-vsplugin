@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import * as vscode from 'vscode';
 
 import { discoverRuns, loadEventLog, type DiscoveredRun } from '@semanticmatter/core';
 
 import { toDashboardView } from '../src/dashboard/renderModel';
+import { ClaudeTerminalRegistry } from '../src/config/claudeTerminalRegistry';
+import { terminalIdentityForRun } from '../src/config/claudeTerminalIdentity';
 import { buildFixtures, type Fixtures } from './fixtures';
 
 let fixtures: Fixtures;
@@ -29,6 +32,31 @@ after(() => {
 });
 
 describe('toDashboardView', () => {
+  it('reports the Claude terminal open after Start late-binding', () => {
+    const run = find('implementing');
+    const terminal = {
+      name: 'Autonomous Claude — repo',
+      exitStatus: undefined,
+      dispose: () => undefined,
+      show: () => undefined
+    } as unknown as vscode.Terminal;
+    const registry = new ClaudeTerminalRegistry();
+    registry.registerUnbound({
+      repositoryId: run.repoId,
+      terminal,
+      knownRunIds: runs.filter((item) => item.runId !== run.runId).map((item) => item.runId)
+    });
+    registry.reconcileRuns([
+      { repositoryId: run.repoId, runId: run.runId, active: true }
+    ]);
+    const view = toDashboardView(run, loadEventLog(run.runDir), {
+      claudeTerminalOpen: registry.has(terminalIdentityForRun(run))
+    });
+    assert.equal(view.claudeTerminalOpen, true);
+    assert.equal(view.currentActivity.claudeTerminalOpen, true);
+    registry.dispose();
+  });
+
   it('serializes a complete run with derived gates, artifacts, and timeline', () => {
     const view = viewFor('complete');
     assert.equal(view.status, 'complete');

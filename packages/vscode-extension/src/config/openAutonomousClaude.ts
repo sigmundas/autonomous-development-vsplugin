@@ -8,11 +8,19 @@ import type { OutputLog } from '../output';
 import { isWorkspaceTrusted } from '../trust';
 import { buildLauncherArgs, withAutonomousClaudePermissions } from './claudeLauncher';
 import { isKnownShellBinary, pluginDirFromControllerPath } from './resumeInClaude';
+import type { ClaudeTerminalRegistry } from './claudeTerminalRegistry';
 
 export interface OpenAutonomousClaudeDeps {
   readonly store: ConfigStore;
   readonly log: OutputLog;
   readonly getControllerPath: () => string;
+  readonly registry?: ClaudeTerminalRegistry;
+  /** Repository evidence captured immediately before Start launches. */
+  readonly unboundRepository?: {
+    readonly repositoryId: string;
+    /** Sampled immediately before terminal creation, after config refresh. */
+    readonly getKnownRunIds: () => readonly string[];
+  };
   readonly createTerminal?: (options: vscode.TerminalOptions) => vscode.Terminal;
   readonly showInfo?: (message: string) => Thenable<string | undefined>;
   readonly showError?: (message: string) => Thenable<string | undefined>;
@@ -137,7 +145,21 @@ export async function openAutonomousClaudeInWorkspace(
   const create =
     deps.createTerminal ??
     ((options: vscode.TerminalOptions) => vscode.window.createTerminal(options));
+  const unboundRegistration =
+    deps.registry && deps.unboundRepository
+      ? {
+          repositoryId: deps.unboundRepository.repositoryId,
+          knownRunIds: deps.unboundRepository.getKnownRunIds()
+        }
+      : undefined;
   const terminal = create(buildOpenAutonomousClaudeTerminalOptions(plan));
+  if (deps.registry && unboundRegistration) {
+    deps.registry.registerUnbound({
+      terminal,
+      repositoryId: unboundRegistration.repositoryId,
+      knownRunIds: unboundRegistration.knownRunIds
+    });
+  }
   terminal.show();
 
   void showInfo(

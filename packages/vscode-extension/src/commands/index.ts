@@ -15,7 +15,9 @@ import type { ConfigCommandDeps } from '../config/configCommands';
 import { openAutonomousClaudeInWorkspace } from '../config/openAutonomousClaude';
 import { resumeRunInClaude } from '../config/resumeInClaude';
 import type { ClaudeTerminalRegistry } from '../config/claudeTerminalRegistry';
+import { terminalIdentityForRun } from '../config/claudeTerminalIdentity';
 import type { ConfigStore } from '../configStore';
+import { resolveWorkspaceRepoId } from '../workspaceRepoId';
 
 export interface CommandDeps {
   readonly context: vscode.ExtensionContext;
@@ -121,9 +123,7 @@ export function registerCommands(deps: CommandDeps): void {
   const controllerDeps: controller.ControllerCommandDeps = {
     service,
     getConfig: deps.getConfig,
-    refresh: deps.refresh,
-    configStore: deps.configStore,
-    configDeps: deps.configDeps
+    refresh: deps.refresh
   };
 
   /** Wrap a run-scoped artifact handler with target resolution + error reporting. */
@@ -158,12 +158,30 @@ export function registerCommands(deps: CommandDeps): void {
   register('autonomousDev.refreshRuns', () => deps.refresh());
   const startRun = createStartRunCommandHandler({
     resolveProjectRoot,
-    openAutonomousClaude: (projectRoot) =>
-      openAutonomousClaudeInWorkspace(projectRoot, {
+    openAutonomousClaude: (projectRoot) => {
+      const repositoryId = resolveWorkspaceRepoId(projectRoot);
+      return openAutonomousClaudeInWorkspace(projectRoot, {
         store: deps.configStore,
         log,
-        getControllerPath: () => deps.getConfig().controllerPath
-      })
+        getControllerPath: () => deps.getConfig().controllerPath,
+        registry: deps.terminalRegistry,
+        ...(repositoryId
+          ? {
+              unboundRepository: {
+                repositoryId,
+                getKnownRunIds: () => {
+                  // Sample immediately before terminal creation. The skill-owned
+                  // run can only be created after the terminal is shown.
+                  deps.refresh();
+                  return store.allRuns
+                    .filter((run) => run.repoId === repositoryId)
+                    .map((run) => run.runId);
+                }
+              }
+            }
+          : {})
+      });
+    }
   });
   for (const id of NEW_AUTONOMOUS_SESSION_COMMAND_IDS) {
     register(id, startRun);
@@ -250,7 +268,7 @@ export function registerCommands(deps: CommandDeps): void {
   register(
     'autonomousDev.focusClaudeTerminal',
     runScoped((run) => {
-      if (!deps.terminalRegistry.focus(run.runId)) {
+      if (!deps.terminalRegistry.focus(terminalIdentityForRun(run))) {
         void vscode.window.showInformationMessage(
           `No active Claude terminal is being tracked for run ${run.runId}.`
         );

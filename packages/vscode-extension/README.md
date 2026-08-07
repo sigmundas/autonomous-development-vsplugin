@@ -80,15 +80,13 @@ python3 /path/to/autonomous-development/scripts/controller.py \
   init --feature "Describe the feature here" --mode auto
 ```
 
-…or, once the folder is open in VS Code, run **Start Run** from the Active Runs
-view title (the `+` button) or the command palette. It prompts for a feature
-description, then opens an integrated terminal in the repository, launches
-`claude --plugin-dir …`, and pre-fills the
-`/autonomous-development:autonomous-feature` skill command — you review it and
-press **Enter** to start the run (trusted workspaces only). This launches the
-Claude driver itself, so there is no separate `controller.py init` step and no
-orphan run; the skill stamps `run-state.json` under
-`<state-home>/repositories/<repo-id>/runs/<run-id>/` as it begins.
+…or, once the folder is open in VS Code, run **Start Autonomous Run** from the
+Active Runs view title (the `+` button) or the command palette. The extension
+opens exactly one Claude session with the selected runtime and bounded
+autonomous permission policy. Invoke `autonomous-feature`,
+`autonomous-current`, or `autonomous-main` in that session and provide the
+feature description. The selected skill owns `controller.py init` and stamps
+`run-state.json` as it begins; the extension does not initialize a run itself.
 
 **3. Open the same folder in VS Code** (File → Open Folder → `my-project`). It must
 be the repository the controller ran in — not a parent or subfolder.
@@ -136,38 +134,12 @@ runs continue to execute with the configuration snapshot the controller pinned
 into `run-state.json` at init time, and the dashboard displays that snapshot
 read-only so you can see exactly what the run was created with.
 
-### Start Run preflight
+### Start Autonomous Run
 
-**Start Run** shows a modal preflight summary — active preset, Claude runtime,
-per-phase Codex profile and reasoning effort, workflow mode, and the maximum
-review-round budget — with three choices: Start, Configure, Cancel.
-
-When a controller is configured, the extension itself calls
-`controller.py init --preset <name> --feature <text> --worktree-mode isolated`
-via a safe argv array. `--preset` is a separate argv element — never embedded
-in the feature text, never assembled by natural-language prompting. This is
-what pins the run's `config_snapshot` deterministically to the selected preset.
-After a successful init, the extension opens an integrated terminal with a bare
-`claude --plugin-dir <root>` line in the initialized worktree so the user can
-drive the run manually; the extension does **not** invoke the
-`autonomous-feature` skill in that terminal because the skill's own `init`
-would create a second run rather than resume the one just initialized. A future
-skill contract with a structured `--run-id` argument would allow the extension
-to invoke the skill directly against the initialized run.
-
-If no controller is configured, Start Run falls back to the legacy
-skill-driven-init flow. In that mode the preset cannot be forwarded — the skill
-takes `$ARGUMENTS` as raw feature text — so the extension does not attempt to
-pass one.
-
-### Launch Claude for Selected Preset
-
-The **Launch Claude for Selected Preset** command validates workspace trust,
-that a runtime is selected, and that its launcher path both exists and is
-executable, then opens a new integrated terminal in the workspace folder and
-**executes** the launcher via a safe argv array built by the extension's
-platform-appropriate quoter (POSIX single-quoting or Windows argv encoding).
-No shell interpolation is ever applied to controller-provided values. The
+**Start Autonomous Run** validates workspace trust, resolves the selected
+Claude runtime, and verifies that its launcher exists and is executable. It
+opens one Claude session in the selected workspace folder with the launcher's
+configured arguments and the shared bounded autonomous permission policy. The
 command fails clearly when:
 
 - no controller is configured (Set Up Controller is offered),
@@ -175,11 +147,12 @@ command fails clearly when:
 - the launcher path is missing, or
 - the launcher is not executable.
 
-The selection chooses which pre-installed **launcher script** the extension
-spawns. The launcher owns the Claude provider, deployment/model, and reasoning
-effort — this version of the extension does not edit those directly. Selection
-applies only to **newly launched** Claude Code sessions; it never changes the
-provider of an already-running session.
+The launcher owns the Claude provider, deployment/model, and reasoning effort;
+the extension does not edit those directly. After Claude opens, invoke one of
+the autonomous skills shown in the terminal notification. That skill—not the
+extension—initializes and drives the controller run. The older
+`autonomousDev.openAutonomousClaude` and `autonomousDev.launchClaude` command IDs
+are compatibility aliases for the same Start implementation.
 
 ### Workflow mode and maximum review rounds
 
@@ -205,7 +178,7 @@ and it never persists Claude credentials or provider API keys.
 | "Controller not configured" in the Configuration tree                 | `autonomousDev.controllerPath` is empty                            | Run **Set Up Controller** to point at `scripts/controller.py`.            |
 | Dropdowns are empty                                                   | The controller succeeded but no profiles/presets/runtimes are defined | Add them to `config.toml` (see the controller's `docs/config-contract.md`) |
 | A phase profile is flagged as missing or invalid                      | `$CODEX_HOME` does not contain the selected profile                | Install / fix the Codex profile under `~/.codex/`.                        |
-| "Launcher not executable" when launching Claude                       | The launcher file exists but its executable bit is not set         | `chmod +x` the launcher, then re-run **Launch Claude for Selected Preset**. |
+| "Launcher not executable" when launching Claude                       | The launcher file exists but its executable bit is not set         | `chmod +x` the launcher, then re-run **Start Autonomous Run**.            |
 
 ## Deferred: live activity streaming
 

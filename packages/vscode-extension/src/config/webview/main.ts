@@ -250,7 +250,7 @@ function renderClaude(view: ConfigView): HTMLElement {
     el(
       'p',
       { class: 'muted small' },
-      'This selection chooses which pre-installed launcher script the extension spawns when you press "Launch Claude for Selected Preset". The launcher owns the Claude provider, deployment/model, and reasoning effort — this version of the extension does not edit those directly.'
+      'This selection chooses which pre-installed launcher script the extension spawns when you start an autonomous run. The launcher owns the Claude provider, deployment/model, and reasoning effort — this version of the extension does not edit those directly.'
     )
   );
   wrap.appendChild(
@@ -317,24 +317,6 @@ function renderClaude(view: ConfigView): HTMLElement {
     );
   }
   wrap.appendChild(grid);
-
-  const launch = el(
-    'button',
-    {
-      type: 'button',
-      class: 'primary',
-      title:
-        'Launch a fresh Claude Code session using the currently selected runtime. This starts an unbound session — to continue an existing run, use "Resume in Claude" from the Active Runs view.'
-    },
-    'Launch Claude for New Runs'
-  ) as HTMLButtonElement;
-  launch.disabled =
-    !view.trusted ||
-    !view.claudeRuntime ||
-    !view.claudeRuntime.launcherExists ||
-    !view.claudeRuntime.launcherExecutable;
-  launch.addEventListener('click', () => post({ type: 'launchClaude' }));
-  wrap.appendChild(launch);
   return wrap;
 }
 
@@ -482,7 +464,11 @@ function renderFooter(view: ConfigView): HTMLElement {
   const wrap = el('footer', { class: 'footer' });
   const refreshBtn = el('button', { type: 'button' }, 'Refresh') as HTMLButtonElement;
   refreshBtn.addEventListener('click', () => post({ type: 'refresh' }));
-  const startBtn = el('button', { type: 'button', class: 'primary' }, 'Start Run') as HTMLButtonElement;
+  const startBtn = el(
+    'button',
+    { type: 'button', class: 'primary' },
+    'Start Autonomous Run'
+  ) as HTMLButtonElement;
   startBtn.disabled = !view.trusted;
   startBtn.addEventListener('click', () => post({ type: 'startRun' }));
   wrap.appendChild(refreshBtn);

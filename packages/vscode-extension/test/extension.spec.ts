@@ -39,6 +39,7 @@ const CONTRIBUTED_COMMANDS = [
   'validateConfiguration',
   'launchClaude',
   'refreshConfiguration',
+  'openAutonomousClaude',
   'startRun'
 ].map((c) => `autonomousDev.${c}`);
 

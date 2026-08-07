@@ -141,7 +141,9 @@ export async function openAutonomousClaudeInWorkspace(
   terminal.show();
 
   void showInfo(
-    `Opened Autonomous Claude with ${runtime.displayName ?? runtime.name} in ${cwd}. This session is not associated with any controller run.`
+    `Autonomous Claude is ready with ${runtime.displayName ?? runtime.name} in ${cwd}. ` +
+      'Invoke one skill to initialize the run: /autonomous-development:autonomous-feature, ' +
+      '/autonomous-development:autonomous-current, or /autonomous-development:autonomous-main.'
   );
   return plan;
 }

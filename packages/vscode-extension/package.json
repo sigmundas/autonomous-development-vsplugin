@@ -92,7 +92,7 @@
     "commands": [
       {
         "command": "autonomousDev.startRun",
-        "title": "Start Run",
+        "title": "Start Autonomous Run",
         "category": "Autonomous Development",
         "icon": "$(add)"
       },
@@ -421,7 +421,7 @@
         },
         {
           "command": "autonomousDev.launchClaude",
-          "when": "autonomousDev.trusted"
+          "when": "false"
         },
         {
           "command": "autonomousDev.resumeInClaude",

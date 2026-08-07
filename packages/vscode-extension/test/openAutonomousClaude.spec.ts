@@ -27,11 +27,20 @@ import { parseRunIdFromTerminalName } from '../src/config/resumeInClaude';
  * identity for this action.
  */
 
+const RUNTIME_ARGS = [
+  '--profile',
+  'anthropic',
+  '--model',
+  'claude-sonnet-4-5',
+  '--effort',
+  'high'
+] as const;
+
 const RUNTIME: ClaudeRuntime = {
   name: 'anthropic-claude',
   displayName: 'Anthropic · Claude',
   launcher: '/usr/local/bin/claude-anthropic',
-  args: ['--profile', 'anthropic'],
+  args: RUNTIME_ARGS,
   launcherExists: true,
   launcherExecutable: true
 };
@@ -110,12 +119,15 @@ describe('openAutonomousClaude — plan construction', () => {
   });
 
   it('launcher is the first argv element, followed by its own args', () => {
-    const plan = planOpenAutonomousClaude(RUNTIME, '/work/repo', '/opt/autodev/scripts/controller.py');
+    const plan = planOpenAutonomousClaude(
+      RUNTIME,
+      '/work/repo',
+      '/opt/autodev/scripts/controller.py'
+    );
     // buildLauncherArgs prepends the launcher then extras; then we append plugin-dir.
     assert.deepEqual(plan.launcherArgv, [
       '/usr/local/bin/claude-anthropic',
-      '--profile',
-      'anthropic',
+      ...RUNTIME_ARGS,
       ...autonomousClaudePermissionArgs(),
       '--plugin-dir',
       '/opt/autodev'
@@ -125,6 +137,13 @@ describe('openAutonomousClaude — plan construction', () => {
     );
     assert.equal(modeIndexes.length, 1);
     assert.equal(plan.launcherArgv[modeIndexes[0]! + 1], 'dontAsk');
+    for (const flag of ['--permission-mode', '--allowedTools', '--disallowedTools']) {
+      assert.equal(
+        plan.launcherArgv.filter((arg) => arg === flag).length,
+        1,
+        `${flag} must occur exactly once`
+      );
+    }
   });
 
   it('fails closed when configured launcher args try to set a permission mode', () => {
@@ -142,13 +161,16 @@ describe('openAutonomousClaude — plan construction', () => {
 
 describe('openAutonomousClaude — terminal options', () => {
   it('sets hideFromUser (Python auto-activation opt-out) and shellPath = launcher', () => {
-    const plan = planOpenAutonomousClaude(RUNTIME, '/work/repo', '/opt/autodev/scripts/controller.py');
+    const plan = planOpenAutonomousClaude(
+      RUNTIME,
+      '/work/repo',
+      '/opt/autodev/scripts/controller.py'
+    );
     const options = buildOpenAutonomousClaudeTerminalOptions(plan);
     assert.equal(options.hideFromUser, true);
     assert.equal(options.shellPath, RUNTIME.launcher);
     assert.deepEqual(options.shellArgs, [
-      '--profile',
-      'anthropic',
+      ...RUNTIME_ARGS,
       ...autonomousClaudePermissionArgs(),
       '--plugin-dir',
       '/opt/autodev'
@@ -245,15 +267,17 @@ function makeFakeConfigStore(overrides: {
       ...(overrides.runtimeName
         ? { effective: { effective: { claudeRuntime: overrides.runtimeName } } }
         : {}),
-      ...(overrides.runtime
-        ? { runtimes: { claudeRuntimes: [overrides.runtime] } }
-        : {})
+      ...(overrides.runtime ? { runtimes: { claudeRuntimes: [overrides.runtime] } } : {})
     }
   };
   return store;
 }
 
-function makeSilentLog(): { info: (m: string) => void; warn: (m: string) => void; error: (m: string) => void } {
+function makeSilentLog(): {
+  info: (m: string) => void;
+  warn: (m: string) => void;
+  error: (m: string) => void;
+} {
   return { info: () => undefined, warn: () => undefined, error: () => undefined };
 }
 
@@ -280,14 +304,34 @@ describe('openAutonomousClaudeInWorkspace — spawn behaviour', () => {
     assert.equal(opts.cwd, '/work/sample-repo');
     assert.equal(opts.shellPath, RUNTIME.launcher);
     assert.deepEqual(opts.shellArgs, [
-      '--profile',
-      'anthropic',
+      ...RUNTIME_ARGS,
       ...autonomousClaudePermissionArgs(),
       '--plugin-dir',
       '/opt/autodev'
     ]);
     assert.equal(opts.hideFromUser, true);
     assert.equal(fake.shownCount, 1, 'the terminal must be revealed via show()');
+  });
+
+  it('tells the user which autonomous skills can initialize the run', async () => {
+    const messages: string[] = [];
+    const store = makeFakeConfigStore({ runtimeName: RUNTIME.name, runtime: RUNTIME });
+    await openAutonomousClaudeInWorkspace('/work/sample-repo', {
+      store: store as never,
+      log: makeSilentLog() as never,
+      getControllerPath: () => '',
+      createTerminal: () => makeFakeTerminal().terminal,
+      showInfo: (message) => {
+        messages.push(message);
+        return Promise.resolve(undefined);
+      },
+      showError: () => Promise.resolve(undefined)
+    });
+    assert.equal(messages.length, 1);
+    assert.match(messages[0] ?? '', /Autonomous Claude is ready/);
+    assert.match(messages[0] ?? '', /autonomous-development:autonomous-feature/);
+    assert.match(messages[0] ?? '', /autonomous-development:autonomous-current/);
+    assert.match(messages[0] ?? '', /autonomous-development:autonomous-main/);
   });
 
   it('never calls terminal.sendText — the plugin loads via the launcher itself', async () => {
@@ -401,7 +445,10 @@ describe('openAutonomousClaudeInWorkspace — spawn behaviour', () => {
   it('surfaces a clear error when the launcher is missing', async () => {
     const messages: string[] = [];
     const missingRuntime: ClaudeRuntime = { ...RUNTIME, launcherExists: false };
-    const store = makeFakeConfigStore({ runtimeName: missingRuntime.name, runtime: missingRuntime });
+    const store = makeFakeConfigStore({
+      runtimeName: missingRuntime.name,
+      runtime: missingRuntime
+    });
     let created = 0;
     await openAutonomousClaudeInWorkspace('/work/sample-repo', {
       store: store as never,

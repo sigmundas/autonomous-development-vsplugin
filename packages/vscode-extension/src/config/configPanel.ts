@@ -27,7 +27,6 @@ type WebviewInbound =
       readonly reasoningEffort?: ControllerReasoningEffort;
     }
   | { readonly type: 'validate' }
-  | { readonly type: 'launchClaude' }
   | { readonly type: 'startRun' }
   | { readonly type: 'setupController' };
 
@@ -282,9 +281,6 @@ export class ConfigPanel {
       case 'validate':
         await this.store.refresh();
         this.render();
-        return;
-      case 'launchClaude':
-        await vscode.commands.executeCommand('autonomousDev.launchClaude');
         return;
       case 'startRun':
         await vscode.commands.executeCommand('autonomousDev.startRun');

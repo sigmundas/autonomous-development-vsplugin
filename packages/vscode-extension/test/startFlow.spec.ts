@@ -55,7 +55,7 @@ describe('normal Start flow', () => {
     assert.match(commandsSource, /openAutonomousClaudeInWorkspace\s*\(/);
   });
 
-  it('keeps one primary configuration action and hides the old launcher from the palette', () => {
+  it('keeps one primary Start action and hides compatibility aliases from the palette', () => {
     const extensionRoot = path.resolve(__dirname, '../..');
     const webviewSource = readFileSync(
       path.join(extensionRoot, 'src/config/webview/main.ts'),
@@ -85,9 +85,14 @@ describe('normal Start flow', () => {
         (command) => command.command === 'autonomousDev.openAutonomousClaude'
       )
     );
-    const legacyLauncher = manifest.contributes.menus.commandPalette.find(
-      (item) => item.command === 'autonomousDev.launchClaude'
-    );
-    assert.equal(legacyLauncher?.when, 'false');
+    for (const command of [
+      'autonomousDev.openAutonomousClaude',
+      'autonomousDev.launchClaude'
+    ]) {
+      const compatibilityAlias = manifest.contributes.menus.commandPalette.find(
+        (item) => item.command === command
+      );
+      assert.equal(compatibilityAlias?.when, 'false');
+    }
   });
 });

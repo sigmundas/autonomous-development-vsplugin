@@ -1,7 +1,7 @@
 {
   "name": "semanticmatter-autonomous-development",
   "displayName": "SemanticMatter Autonomous Development",
-  "description": "Read-only observer and visualization control plane for quaat/autonomous-development workflow runs.",
+  "description": "Observer and visualization control plane for quaat/autonomous-development workflow runs.",
   "version": "0.3.0",
   "publisher": "semanticmatter",
   "license": "MIT",
@@ -33,11 +33,11 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Observer features (run discovery, dashboard, artifact viewing, diffs) work in untrusted workspaces. Controller actions that execute the external controller or mutate run state (start run, evaluate, accept-drift, cancel, archive, guided setup) require a trusted workspace."
+      "description": "Observer features (run discovery, dashboard, artifact viewing, diffs) work in untrusted workspaces. Controller-backed configuration and mutations, guided setup, and launching the external autonomous Claude process require a trusted workspace."
     },
     "virtualWorkspaces": {
       "supported": "limited",
-      "description": "Observer features require local filesystem access to the state home; controller actions are unavailable in virtual workspaces."
+      "description": "Observer features require local filesystem access to the state home; controller-backed configuration and actions, guided setup, and autonomous process launch are unavailable in virtual workspaces."
     }
   },
   "activationEvents": [],
@@ -388,7 +388,7 @@
         },
         {
           "command": "autonomousDev.openAutonomousClaude",
-          "when": "autonomousDev.trusted"
+          "when": "false"
         },
         {
           "command": "autonomousDev.configure"
@@ -502,7 +502,7 @@
         "autonomousDev.controllerPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Absolute path to the `quaat/autonomous-development` `scripts/controller.py`. Leave empty to run in observer-only mode. Used only for explicit controller actions and setup checks.",
+          "markdownDescription": "Absolute path to the `quaat/autonomous-development` `scripts/controller.py`. Leave empty to run in observer-only mode. Used to resolve autonomous configuration and the plugin location for Start, and to invoke explicit controller actions and setup checks.",
           "scope": "machine-overridable"
         },
         "autonomousDev.stateHome": {
@@ -561,7 +561,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/dashboard/webview/tsconfig.json && tsc --noEmit -p src/config/webview/tsconfig.json",
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.mjs",
-    "build:test": "tsc -p tsconfig.test.json",
+    "build:test": "node clean-test-output.mjs && tsc -p tsconfig.test.json",
     "watch": "node esbuild.mjs --watch",
     "pretest:integration": "npm run build && npm run build:test",
     "test:integration": "vscode-test",
@@ -574,8 +574,8 @@
   },
   "devDependencies": {
     "@types/vscode": "1.85.0",
-    "@vscode/test-cli": "0.0.10",
-    "@vscode/test-electron": "2.4.1",
+    "@vscode/test-cli": "0.0.15",
+    "@vscode/test-electron": "3.1.0",
     "@vscode/vsce": "2.32.0"
   }
 }

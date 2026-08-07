@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import type { ClaudeRuntime, DiscoveredRun } from '@semanticmatter/core';
 
+import { autonomousClaudePermissionArgs } from '../src/config/claudeLauncher';
 import { buildTerminalOptions, planResumeInClaude } from '../src/config/resumeInClaude';
 
 const RUNTIME: ClaudeRuntime = {
@@ -62,7 +63,13 @@ describe('buildTerminalOptions — direct launcher process (no shell interpositi
     assert.equal(options.shellPath, '/usr/local/bin/claude-azure');
     // shellArgs must include the runtime's own args AND the auto-appended
     // --plugin-dir followed by the derived plugin root.
-    assert.deepEqual(options.shellArgs, ['--profile', 'azure', '--plugin-dir', '/opt/autodev']);
+    assert.deepEqual(options.shellArgs, [
+      '--profile',
+      'azure',
+      ...autonomousClaudePermissionArgs(),
+      '--plugin-dir',
+      '/opt/autodev'
+    ]);
     // cwd is the run worktree.
     assert.equal(options.cwd, '/work/wt');
     // Terminal name includes the run id so multiple runs stay distinguishable.
@@ -79,7 +86,11 @@ describe('buildTerminalOptions — direct launcher process (no shell interpositi
       '/work/wt'
     );
     const options = buildTerminalOptions(plan);
-    assert.deepEqual(options.shellArgs, ['--profile', 'azure']);
+    assert.deepEqual(options.shellArgs, [
+      '--profile',
+      'azure',
+      ...autonomousClaudePermissionArgs()
+    ]);
   });
 
   it('never carries a `sendText`-style command line into the shell', () => {

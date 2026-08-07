@@ -7,7 +7,7 @@ import { ClaudeTerminalRegistry } from '../src/config/claudeTerminalRegistry';
 /** Minimal fake terminal for registry unit tests (no real shell spawned). */
 function fakeTerminal(name: string): vscode.Terminal & { shownCount: number; disposed: boolean } {
   const state: { shownCount: number; disposed: boolean } = { shownCount: 0, disposed: false };
-  const terminal = {
+  const terminal: Record<string, unknown> = {
     name,
     processId: Promise.resolve(undefined),
     creationOptions: {} as vscode.TerminalOptions,
@@ -27,7 +27,12 @@ function fakeTerminal(name: string): vscode.Terminal & { shownCount: number; dis
       state.disposed = true;
     }
   };
-  return Object.assign(terminal, state) as unknown as vscode.Terminal & {
+  // Live getters ensure assertions observe mutations made by the closures above.
+  Object.defineProperties(terminal, {
+    shownCount: { get: () => state.shownCount, enumerable: true },
+    disposed: { get: () => state.disposed, enumerable: true }
+  });
+  return terminal as unknown as vscode.Terminal & {
     shownCount: number;
     disposed: boolean;
   };

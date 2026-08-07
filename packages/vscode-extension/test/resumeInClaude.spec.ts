@@ -225,8 +225,11 @@ describe('resumeInClaude — plan construction', () => {
       /Run controller status and next-action --json, then continue from the recorded phase\./
     );
     // The instruction MUST NOT contain a "controller.py init" invocation — the
-    // extension never resumes a run by initializing.
-    assert.ok(!plan.instruction.includes('init'));
+    // extension never resumes a run by initializing. Match the *word* boundary
+    // so the "initialize" that appears in "Do not initialize a new run" (the
+    // negative directive) does not spuriously trigger this assertion.
+    assert.doesNotMatch(plan.instruction, /\binit\b/);
+    assert.doesNotMatch(plan.instruction, /controller\.py\s+init/);
   });
 
   it('produces an empty argv when no runtime can be resolved', () => {

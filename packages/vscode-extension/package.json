@@ -97,6 +97,12 @@
         "icon": "$(add)"
       },
       {
+        "command": "autonomousDev.openAutonomousClaude",
+        "title": "Open Autonomous Claude",
+        "category": "Autonomous Development",
+        "icon": "$(play)"
+      },
+      {
         "command": "autonomousDev.openDashboard",
         "title": "Open Workflow Dashboard",
         "category": "Autonomous Development",
@@ -378,6 +384,10 @@
       "commandPalette": [
         {
           "command": "autonomousDev.startRun",
+          "when": "autonomousDev.trusted"
+        },
+        {
+          "command": "autonomousDev.openAutonomousClaude",
           "when": "autonomousDev.trusted"
         },
         {

@@ -13,6 +13,7 @@ import * as controller from './controllerCommands';
 import * as configCmds from '../config/configCommands';
 import type { ConfigCommandDeps } from '../config/configCommands';
 import { launchClaudeForSelectedPreset } from '../config/claudeLauncher';
+import { openAutonomousClaudeInWorkspace } from '../config/openAutonomousClaude';
 import { resumeRunInClaude } from '../config/resumeInClaude';
 import type { ClaudeTerminalRegistry } from '../config/claudeTerminalRegistry';
 import type { ConfigStore } from '../configStore';
@@ -143,6 +144,17 @@ export function registerCommands(deps: CommandDeps): void {
       return;
     }
     await controller.startRun(projectRoot, controllerDeps);
+  });
+  register('autonomousDev.openAutonomousClaude', async () => {
+    const projectRoot = await resolveProjectRoot();
+    if (!projectRoot) {
+      return;
+    }
+    await openAutonomousClaudeInWorkspace(projectRoot, {
+      store: deps.configStore,
+      log,
+      getControllerPath: () => deps.getConfig().controllerPath
+    });
   });
 
   register('autonomousDev.openOriginalFeature', runScoped(artifacts.openOriginalFeature));

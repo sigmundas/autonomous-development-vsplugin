@@ -3,6 +3,11 @@
 Reflects controller **v0.3.0** (`.claude-plugin/plugin.json` version `0.3.0`,
 git revision `a72f740`).
 
+This is the preserved original-upstream baseline. The VSIX 0.4.x runtime
+compatibility requirement is the maintained `sigmundas/autonomous-development`
+core **>=0.4.0 <0.5.0**; its additive configuration and autonomous-resume
+contracts do not change run-state `schema_version` 2.
+
 This document records the **authoritative** state layout, schemas, controller
 interface, completion-gate logic, lifecycle, and safety boundaries of the
 `quaat/autonomous-development` plugin, as derived directly from its source

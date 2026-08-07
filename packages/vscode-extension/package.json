@@ -1,19 +1,19 @@
 {
   "name": "semanticmatter-autonomous-development",
   "displayName": "SemanticMatter Autonomous Development",
-  "description": "Observer and visualization control plane for quaat/autonomous-development workflow runs.",
-  "version": "0.3.0",
+  "description": "Observer and control plane for autonomous-development workflow runs.",
+  "version": "0.4.0",
   "publisher": "semanticmatter",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/semanticmatter/autodev-vscode.git"
+    "url": "https://github.com/sigmundas/autonomous-development-vsplugin.git"
   },
-  "homepage": "https://github.com/semanticmatter/autodev-vscode#readme",
+  "homepage": "https://github.com/sigmundas/autonomous-development-vsplugin#readme",
   "bugs": {
-    "url": "https://github.com/semanticmatter/autodev-vscode/issues"
+    "url": "https://github.com/sigmundas/autonomous-development-vsplugin/issues"
   },
-  "qna": "https://github.com/semanticmatter/autodev-vscode/issues",
+  "qna": "https://github.com/sigmundas/autonomous-development-vsplugin/issues",
   "keywords": [
     "autonomous-development",
     "code-review",
@@ -502,7 +502,7 @@
         "autonomousDev.controllerPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Absolute path to the `quaat/autonomous-development` `scripts/controller.py`. Leave empty to run in observer-only mode. Used to resolve autonomous configuration and the plugin location for Start, and to invoke explicit controller actions and setup checks.",
+          "markdownDescription": "Absolute path to the autonomous-development core 0.4.x `scripts/controller.py`. Leave empty to run in observer-only mode. Used to resolve autonomous configuration and the plugin location for Start, and to invoke explicit controller actions and setup checks.",
           "scope": "machine-overridable"
         },
         "autonomousDev.stateHome": {

@@ -1,8 +1,12 @@
 # SemanticMatter Autonomous Development
 
-An observer and visual control plane for the
+An observer and control plane for the autonomous-development workflow. Version
+0.4.x requires the maintained
+[`sigmundas/autonomous-development`](https://github.com/sigmundas/autonomous-development)
+core **>=0.4.0 <0.5.0** for configuration, Start, Resume, and controller
+actions. The controller and this extension are derived from the original
 [`quaat/autonomous-development`](https://github.com/quaat/autonomous-development)
-autonomous feature-development workflow.
+project with its authorship, history, and MIT license preserved.
 
 Discover workflow runs, inspect their progress and artifacts, compare prompt and
 specification revisions in the native diff editor, review verification and Codex
@@ -45,8 +49,8 @@ even when a run was started outside it.
 3. Select a run to open its dashboard.
 
 Observer features need no controller and no Claude/Codex credentials. To enable
-controller actions, run **Set Up Controller** and point it at your
-`quaat/autonomous-development` `scripts/controller.py`.
+controller actions, run **Set Up Controller** and point it at the maintained
+core 0.4.x `scripts/controller.py`.
 
 > **The one rule that matters:** runs are scoped to the open folder's **git
 > identity**. The extension only lists runs that belong to the repository you have

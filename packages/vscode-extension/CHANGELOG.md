@@ -5,6 +5,15 @@ documented here. This project adheres to [Semantic Versioning](https://semver.or
 
 ## Unreleased
 
+## 0.4.0 - 2026-08-07
+
+Requires the maintained `sigmundas/autonomous-development` core **>=0.4.0
+<0.5.0** for configuration, Start, Resume, and controller actions. Run-state
+remains at `schema_version` 2 (versions 1 and 2 supported). The compatibility
+reference to the original `quaat/autonomous-development` v0.3.0 revision
+`a72f740` remains the preserved upstream baseline, not the runtime requirement
+for these 0.4.0 controls.
+
 ### Added
 
 - **Pre-run configuration surface.** A dedicated **Configuration** view in the
@@ -35,6 +44,10 @@ documented here. This project adheres to [Semantic Versioning](https://semver.or
   discovery evidence. A live terminal is focused and reused; after it exits,
   **Resume in Claude** opens one replacement and automatically invokes the
   controller plugin's dedicated `autonomous-resume` skill with the exact run ID.
+- **Repository-qualified terminal identity.** Managed terminal bindings,
+  reload recovery, focus, close handling, late binding, and concurrency locks
+  use repository identity plus run ID, so equal run IDs in different
+  repositories cannot collide.
 - **Run dashboard configuration snapshot.** Runs that carry a
   `config_snapshot` in their `run-state.json` now display a read-only
   configuration section — preset, Claude runtime, and per-phase profile and
@@ -48,12 +61,23 @@ documented here. This project adheres to [Semantic Versioning](https://semver.or
 
 ### Changed
 
+- **Bounded Claude permissions.** Start and Resume launch Claude directly with
+  one shared `dontAsk` policy limited to the autonomous workflow's required
+  tools. Configured runtimes cannot override the permission mode or enable
+  bypass permissions.
+- **Exact controller actions.** Cancel and other mutating actions target an
+  explicit run, require workspace trust and confirmation where appropriate,
+  and are invoked as argument arrays rather than shell command strings.
 - **Compact workflow-stage metadata.** Profile/model and reasoning-effort text
   now renders on one secondary line beneath the stage title, never breaks
   identifiers mid-token, and ellipsizes at narrow dashboard widths. Hovering
   exposes the complete value and profile detail.
 - Workflow status labels now occupy a consistent right-aligned column; long
   stage titles ellipsize without displacing or wrapping the status.
+- Integration tests now use a hermetic VS Code test profile and cover the
+  skill-owned Start contract, repository-qualified terminal recovery, exact-run
+  Resume, controller actions, dashboard rendering, and malformed-state
+  tolerance.
 
 ### Notes
 

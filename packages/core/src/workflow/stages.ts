@@ -52,6 +52,74 @@ export interface StageFacts {
   readonly hasAdversarial: boolean;
   readonly adversarialPassed: boolean;
   readonly nextActionCode: NextActionCode;
+  /**
+   * The controller's authoritative phase string, verbatim from run-state.json.
+   * When provided, this drives the "active" stage rather than the array-index
+   * heuristic — so `plan-accepted` correctly renders Implementing as active
+   * even though no verification checks have run yet.
+   */
+  readonly controllerPhase?: string;
+}
+
+/**
+ * Map the controller's authoritative phase string to the timeline stage that
+ * should be marked ACTIVE for a non-terminal run. Returns `undefined` for
+ * terminal statuses or when we don't recognize the phase — callers then fall
+ * back to next-action-derived mapping.
+ *
+ * This mapping is intentionally exhaustive over the phase vocabulary the
+ * controller emits today (see quaat/autonomous-development scripts/controller.py):
+ *   initialized, enhance, idea-enhanced, spec-accepted, plan-proposed,
+ *   plan-accepted, implementing, verification, verification-failed,
+ *   review, independent-review, triage, adversarial, adversarial-review,
+ *   completion-evaluation, complete, cancelled, blocked, archived,
+ *   review-budget-exhausted.
+ */
+export function stageForControllerPhase(
+  phase: string | undefined,
+  status: RunStatus
+): StageId | undefined {
+  if (status === 'complete' || status === 'cancelled' || status === 'archived') {
+    return undefined;
+  }
+  if (!phase || phase.length === 0) return undefined;
+  switch (phase) {
+    case 'initialized':
+      return 'idea-enhanced';
+    case 'enhance':
+    case 'enhancing':
+      return 'idea-enhanced';
+    case 'idea-enhanced':
+      return 'spec-accepted';
+    case 'spec-accepted':
+      return 'plan-proposed';
+    case 'plan-proposed':
+      return 'plan-accepted';
+    case 'plan-accepted':
+      // Accepted plan → Claude implements next. Verification is not active yet.
+      return 'implementing';
+    case 'implementing':
+      return 'implementing';
+    case 'verification':
+    case 'verification-failed':
+      return 'verification';
+    case 'review':
+    case 'independent-review':
+    case 'reviewing':
+      return 'independent-review';
+    case 'triage':
+      return 'triage';
+    case 'adversarial':
+    case 'adversarial-review':
+      return 'adversarial-review';
+    case 'completion-evaluation':
+      return 'completion-evaluation';
+    case 'review-budget-exhausted':
+    case 'blocked':
+      return undefined;
+    default:
+      return undefined;
+  }
 }
 
 const STAGE_ORDER: ReadonlyArray<{ id: StageId; title: string }> = [
@@ -120,12 +188,38 @@ function indexOf(id: StageId): number {
 }
 
 export function deriveStages(f: StageFacts): WorkflowStage[] {
-  const activeIndex = indexOf(NEXT_ACTION_STAGE[f.nextActionCode]);
   const terminalBlocked = f.status === 'blocked';
   const terminalCancelled = f.status === 'cancelled';
   const terminalArchived = f.status === 'archived';
   const isComplete = f.status === 'complete';
   const halted = terminalBlocked || terminalCancelled;
+
+  // Active-stage resolution: reconcile the controller's authoritative phase
+  // (from run-state.json) with the evaluator's next-action code. Both are
+  // authoritative for different questions — the phase reports where the
+  // controller thinks the run is; next-action reports what the workflow gate
+  // logic says should happen next given the artifacts on disk. When the two
+  // disagree (e.g. controller wrote phase = "implementing" as an initial default
+  // but no enhance artifact exists yet), the EARLIER stage wins: forward
+  // progress requires every earlier stage's evidence, so we must not paint the
+  // timeline as ahead of the actual artifacts.
+  //
+  // Never infer the active stage by "everything before this index is done" —
+  // the completion of each stage is decided independently by reached().
+  let activeStageId: StageId | undefined;
+  if (!(halted || isComplete || terminalArchived)) {
+    const phaseStage = stageForControllerPhase(f.controllerPhase, f.status);
+    const nextActionStage: StageId | undefined = NEXT_ACTION_STAGE[f.nextActionCode];
+    if (phaseStage && nextActionStage) {
+      const phaseIdx = indexOf(phaseStage);
+      const nextIdx = indexOf(nextActionStage);
+      // Earlier stage wins so the UI never overtakes the actual evidence.
+      activeStageId = phaseIdx <= nextIdx ? phaseStage : nextActionStage;
+    } else {
+      activeStageId = phaseStage ?? nextActionStage;
+    }
+  }
+  const activeIndex = activeStageId !== undefined ? indexOf(activeStageId) : -1;
 
   // Stop point for halted runs: the first incomplete, non-skipped stage.
   let haltIndex = STAGE_ORDER.length - 1;
@@ -179,15 +273,19 @@ export function deriveStages(f: StageFacts): WorkflowStage[] {
       return { ...base, status: 'skipped' };
     }
 
-    // Active (non-terminal) run.
-    if (i === activeIndex) {
-      if (stage.id === 'verification' && f.hasChecks && !f.verificationPassed) {
-        return { ...base, status: 'failed' };
-      }
-      return { ...base, status: 'active' };
+    // Verification is a special call-out: whenever checks have been run and
+    // did not all pass, the timeline should show it as failed regardless of
+    // whether it is the currently "active" stage — the failing state is what
+    // the user needs to see.
+    if (stage.id === 'verification' && f.hasChecks && !f.verificationPassed) {
+      return { ...base, status: 'failed' };
     }
-    if (i < activeIndex) {
-      return { ...base, status: 'complete' };
+
+    // Active (non-terminal) run — the "active" stage is decided above by the
+    // phase + next-action reconciliation; every other unreached stage stays
+    // pending.
+    if (i === activeIndex) {
+      return { ...base, status: 'active' };
     }
     return { ...base, status: 'pending' };
   });

@@ -3,6 +3,8 @@ import { basename, join } from 'node:path';
 import * as vscode from 'vscode';
 import { confineToDirectory, loadEventLog, type DiscoveredRun } from '@semanticmatter/core';
 
+import type { ClaudeTerminalRegistry } from '../config/claudeTerminalRegistry';
+import { terminalIdentityForRun } from '../config/claudeTerminalIdentity';
 import type { ExtensionConfig } from '../config';
 import type { OutputLog } from '../output';
 import type { RunStore } from '../runStore';
@@ -41,7 +43,8 @@ export class DashboardPanel {
     private readonly extensionUri: vscode.Uri,
     private readonly store: RunStore,
     private readonly getConfig: () => ExtensionConfig,
-    private readonly log: OutputLog
+    private readonly log: OutputLog,
+    private readonly terminalRegistry: ClaudeTerminalRegistry
   ) {
     this.panel.webview.html = this.html();
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
@@ -52,6 +55,23 @@ export class DashboardPanel {
     );
     // Live updates: when discovery refreshes, re-render the selected run.
     this.store.onDidChange(() => this.render(), null, this.disposables);
+    // Also re-render when a Claude terminal opens/closes for the current run
+    // so the header button switches between "Resume in Claude" and
+    // "Focus Claude terminal" without waiting for a store poll.
+    this.terminalRegistry.onDidChange(
+      (identity) => {
+        const run = this.currentRun();
+        if (
+          run &&
+          run.repoId === identity.repositoryId &&
+          run.runId === identity.runId
+        ) {
+          this.render();
+        }
+      },
+      null,
+      this.disposables
+    );
   }
 
   static show(
@@ -59,7 +79,8 @@ export class DashboardPanel {
     store: RunStore,
     getConfig: () => ExtensionConfig,
     log: OutputLog,
-    run: DiscoveredRun
+    run: DiscoveredRun,
+    terminalRegistry: ClaudeTerminalRegistry
   ): void {
     const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
     if (DashboardPanel.current) {
@@ -77,7 +98,14 @@ export class DashboardPanel {
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'dist', 'webview')]
       }
     );
-    DashboardPanel.current = new DashboardPanel(panel, extensionUri, store, getConfig, log);
+    DashboardPanel.current = new DashboardPanel(
+      panel,
+      extensionUri,
+      store,
+      getConfig,
+      log,
+      terminalRegistry
+    );
     DashboardPanel.current.setRun(run);
   }
 
@@ -101,7 +129,9 @@ export class DashboardPanel {
     const eventLog = loadEventLog(run.runDir, { maxEntries: this.getConfig().maxEventLogEntries });
     const view = reconcileTimeline(
       key ? this.lastViewByKey.get(key) : undefined,
-      toDashboardView(run, eventLog)
+      toDashboardView(run, eventLog, {
+        claudeTerminalOpen: this.terminalRegistry.has(terminalIdentityForRun(run))
+      })
     );
     if (key) {
       this.lastViewByKey.set(key, view);

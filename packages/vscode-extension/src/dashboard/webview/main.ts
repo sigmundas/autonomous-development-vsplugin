@@ -70,8 +70,64 @@ function command(commandId: string): void {
   vscode.postMessage({ type: 'command', command: commandId });
 }
 
+const TASK_COLLAPSED_MAX_CHARS = 400;
+
+function shortSha(sha: string): string {
+  return sha.length > 7 ? sha.slice(0, 7) : sha;
+}
+
+function checkoutLabel(mode?: string): string | undefined {
+  if (!mode) return undefined;
+  if (mode === 'current') return 'current checkout';
+  if (mode === 'isolated') return 'isolated worktree';
+  return mode;
+}
+
+function renderTaskBlock(view: DashboardView): HTMLElement {
+  const text = view.feature || view.runId;
+  const long = text.length > TASK_COLLAPSED_MAX_CHARS;
+  const body = el(
+    'p',
+    { class: `task-body${long ? ' collapsed' : ''}`, id: 'task-body' },
+    [text]
+  );
+  const wrap = el('div', { class: 'task-wrap' }, [
+    el('h2', { class: 'small-label' }, ['Task']),
+    body
+  ]);
+  if (long) {
+    const btn = el(
+      'button',
+      {
+        type: 'button',
+        class: 'link toggle-task',
+        'aria-controls': 'task-body',
+        'aria-expanded': 'false',
+        tabindex: '0'
+      },
+      ['Show more']
+    ) as HTMLButtonElement;
+    btn.addEventListener('click', () => {
+      const expanded = body.classList.toggle('collapsed');
+      // toggle returns true iff the class list contains the token afterwards —
+      // classList.toggle: true means class ADDED. So "expanded" here is false.
+      const isNowCollapsed = expanded;
+      btn.textContent = isNowCollapsed ? 'Show more' : 'Show less';
+      btn.setAttribute('aria-expanded', String(!isNowCollapsed));
+    });
+    btn.addEventListener('keydown', (e: Event) => {
+      const key = (e as KeyboardEvent).key;
+      if (key === 'Enter' || key === ' ') {
+        e.preventDefault();
+        btn.click();
+      }
+    });
+    wrap.appendChild(btn);
+  }
+  return wrap;
+}
+
 function renderHeader(view: DashboardView): HTMLElement {
-  const featureLine = (view.feature.split('\n')[0] ?? view.feature) || view.runId;
   const badges = el('div', { class: 'badges' }, [
     el('span', { class: `badge status-${view.status}` }, [view.status]),
     view.phase && el('span', { class: 'badge phase' }, [view.phase]),
@@ -79,33 +135,149 @@ function renderHeader(view: DashboardView): HTMLElement {
       ? el('span', { class: 'badge ok' }, ['gates pass'])
       : el('span', { class: 'badge warn' }, ['gates pending'])
   ]);
-  const meta: Child[] = [
+
+  const repoMeta: Child[] = [
     kv('Run ID', view.runId),
     kv('Repository', view.repository.displayName ?? view.repository.id)
   ];
-  if (view.repository.worktreePath) meta.push(kv('Worktree', view.repository.worktreePath));
-  if (view.repository.remoteDisplay) meta.push(kv('Remote', view.repository.remoteDisplay));
-  if (view.createdAt) meta.push(kv('Created', view.createdAt));
-  if (view.updatedAt) meta.push(kv('Updated', view.updatedAt));
+  if (view.repository.branch) repoMeta.push(kv('Branch', view.repository.branch));
+  if (view.repository.baselineCommit) {
+    const short = shortSha(view.repository.baselineCommit);
+    repoMeta.push(
+      el('div', { class: 'kv', title: view.repository.baselineCommit }, [
+        el('span', { class: 'kv-label' }, ['Baseline']),
+        el('span', { class: 'kv-value monospace' }, [short])
+      ])
+    );
+  }
+  const checkout = checkoutLabel(view.repository.worktreeMode);
+  if (checkout) repoMeta.push(kv('Checkout', checkout));
+  if (view.repository.worktreePath) repoMeta.push(kv('Worktree', view.repository.worktreePath));
+  if (view.repository.remoteDisplay) repoMeta.push(kv('Remote', view.repository.remoteDisplay));
+  if (view.createdAt) repoMeta.push(kv('Created', view.createdAt));
+  if (view.updatedAt) repoMeta.push(kv('Updated', view.updatedAt));
+
+  const canResume = !view.isTerminal;
+  const canCancel = view.status === 'active';
+  const terminalOpen = view.claudeTerminalOpen;
+  const actions = el('div', { class: 'run-actions' }, [
+    canResume
+      ? terminalOpen
+        ? button(
+            'Focus Claude terminal',
+            () => command('autonomousDev.focusClaudeTerminal'),
+            {
+              class: 'primary',
+              title:
+                'An extension-tracked Claude terminal is already open for this run. Clicking will reveal it — a new session will not be spawned.'
+            }
+          )
+        : button(
+            '▶ Resume in Claude',
+            () => command('autonomousDev.resumeInClaude'),
+            {
+              class: 'primary',
+              title:
+                "Launch the run's snapshotted Claude runtime rooted at its worktree and continue from the recorded phase."
+            }
+          )
+      : null,
+    canCancel
+      ? button('Cancel run', () => command('autonomousDev.cancelRun'), { class: 'danger' })
+      : null
+  ]);
 
   return el('header', { class: 'card header' }, [
-    el('h1', {}, [featureLine]),
+    renderTaskBlock(view),
     badges,
     view.blockingReason
       ? el('p', { class: 'blocking' }, [`Blocked: ${view.blockingReason}`])
       : null,
-    el('div', { class: 'meta' }, meta)
+    el('div', { class: 'meta' }, repoMeta),
+    actions
   ]);
 }
 
-function renderStages(stages: readonly DashboardStage[]): HTMLElement {
-  const items = stages.map((s) =>
-    el('li', { class: `stage stage-${s.status}`, title: s.detail ?? s.status }, [
-      el('span', { class: 'stage-dot' }, []),
-      el('span', { class: 'stage-title' }, [s.title]),
-      el('span', { class: 'stage-status' }, [s.status])
+function renderCurrentActivity(view: DashboardView): HTMLElement | null {
+  const activity = view.currentActivity;
+  if (!activity) return null;
+  const cells: Child[] = [
+    kv('Phase', activity.phase || '—'),
+    kv('Next', activity.nextActionMessage || '—')
+  ];
+  if (activity.latestNote) cells.push(kv('Latest note', activity.latestNote));
+  cells.push(
+    kv(
+      'Claude terminal',
+      activity.claudeTerminalOpen ? 'open (this extension)' : 'not open'
+    )
+  );
+  if (activity.updatedAt) cells.push(kv('Updated', activity.updatedAt));
+  return section(
+    'Current activity',
+    el('div', { class: 'status-grid' }, cells),
+    el('p', { class: 'muted small' }, [
+      'Detailed live activity (files being read, tests running, Codex tool events) requires the planned Claude Agent SDK and Codex app-server adapters and is deferred.'
     ])
   );
+}
+
+/**
+ * Best-known artifact / log command for each pipeline stage. Stages without an
+ * associated command render as plain (non-clickable) list items.
+ */
+const STAGE_COMMANDS: Readonly<Record<string, string>> = {
+  'idea-enhanced': 'autonomousDev.openEnhancedSpec',
+  'spec-accepted': 'autonomousDev.openAcceptedSpec',
+  'plan-proposed': 'autonomousDev.openProposedPlan',
+  'plan-accepted': 'autonomousDev.openAcceptedPlan',
+  verification: 'autonomousDev.openVerificationLog',
+  'independent-review': 'autonomousDev.openLatestReview',
+  'adversarial-review': 'autonomousDev.openLatestReview'
+};
+
+function renderStages(stages: readonly DashboardStage[]): HTMLElement {
+  const items = stages.map((s) => {
+    const cmd = STAGE_COMMANDS[s.id];
+    const clickable = cmd !== undefined && (s.status === 'complete' || s.status === 'failed');
+    const titleRow = el('div', { class: 'stage-title-row' }, [
+      el('span', { class: 'stage-title' }, [s.title]),
+      el('span', { class: 'stage-status' }, [s.status])
+    ]);
+    const contents: Child[] = [el('span', { class: 'stage-dot' }, []), titleRow];
+    if (s.meta) {
+      contents.push(
+        el(
+          'span',
+          {
+            class: 'stage-meta',
+            title: s.metaTooltip ? `${s.meta}\n${s.metaTooltip}` : s.meta
+          },
+          [s.meta]
+        )
+      );
+    }
+    const li = el(
+      'li',
+      {
+        class: `stage stage-${s.status}${clickable ? ' clickable' : ''}`,
+        title: clickable ? `Open the artifact for ${s.title}` : (s.detail ?? s.status),
+        ...(clickable ? { role: 'button', tabindex: '0' } : {})
+      },
+      contents
+    );
+    if (clickable && cmd) {
+      li.addEventListener('click', () => command(cmd));
+      li.addEventListener('keydown', (e: Event) => {
+        const key = (e as KeyboardEvent).key;
+        if (key === 'Enter' || key === ' ') {
+          e.preventDefault();
+          command(cmd);
+        }
+      });
+    }
+    return li;
+  });
   return section('Workflow timeline', el('ol', { class: 'stages' }, items));
 }
 
@@ -522,6 +694,55 @@ function renderTimeline(view: DashboardView): HTMLElement | null {
   );
 }
 
+function renderConfigSnapshot(view: DashboardView): HTMLElement | null {
+  const snap = view.configSnapshot;
+  if (!snap) {
+    // Legacy run without a config_snapshot — call this out explicitly so users
+    // understand Resume in Claude will fall back to the global runtime.
+    return section(
+      'Run configuration',
+      el('p', { class: 'muted' }, [
+        'This run predates config-snapshot pinning. Resume in Claude will fall back to the currently configured Claude runtime for new runs.'
+      ])
+    );
+  }
+  const rows: Child[] = [
+    kv('Preset used (this run)', snap.preset ?? '—'),
+    kv('Claude runtime (this run)', snap.claudeRuntime ?? '—'),
+    kv('Workflow mode (this run)', snap.workflowMode ?? '—'),
+    kv(
+      'Maximum review rounds (this run)',
+      snap.maxReviewRounds !== undefined ? String(snap.maxReviewRounds) : '—'
+    )
+  ];
+  for (const phase of snap.phases) {
+    const detail = [phase.profile ?? '— default —', phase.reasoningEffort ?? '—']
+      .filter(Boolean)
+      .join(' · ');
+    const model = phase.model ? ` (model: ${phase.model})` : '';
+    rows.push(kv(phaseSnapshotLabel(phase.phase), `${detail}${model}`));
+  }
+  const note = el('p', { class: 'muted' }, [
+    'These values were snapshotted when the run was initialized. They are what "Resume in Claude" will use. They do NOT reflect the current global preset — change the global preset only for new runs.'
+  ]);
+  return section('Run configuration (snapshot)', note, ...rows);
+}
+
+function phaseSnapshotLabel(phase: string): string {
+  switch (phase) {
+    case 'enhance':
+      return 'Enhance profile/effort';
+    case 'plan':
+      return 'Plan profile/effort';
+    case 'review':
+      return 'Review profile/effort';
+    case 'adversarial':
+      return 'Adversarial profile/effort';
+    default:
+      return `${phase} profile/effort`;
+  }
+}
+
 function renderDiagnostics(view: DashboardView): HTMLElement | null {
   if (view.diagnostics.length === 0) {
     return null;
@@ -546,8 +767,10 @@ function render(view: DashboardView): void {
   app.textContent = '';
   const fragments: Child[] = [
     renderHeader(view),
+    renderCurrentActivity(view),
     renderStages(view.stages),
     renderStatus(view),
+    renderConfigSnapshot(view),
     renderCumulativeFindings(view),
     renderAcceptanceCriteria(view),
     renderArtifacts(view),

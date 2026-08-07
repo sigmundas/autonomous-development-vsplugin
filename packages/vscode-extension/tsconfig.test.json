@@ -9,6 +9,6 @@
     "types": ["node", "vscode", "mocha"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"],
-  "exclude": ["src/dashboard/webview/**"],
+  "exclude": ["src/dashboard/webview/**", "src/config/webview/**"],
   "references": [{ "path": "../protocol" }, { "path": "../core" }]
 }

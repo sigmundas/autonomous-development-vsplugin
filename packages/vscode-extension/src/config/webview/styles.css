@@ -1,0 +1,137 @@
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  padding: 0;
+  margin: 0;
+}
+
+#app {
+  padding: 1.25rem 1.5rem 2rem;
+  max-width: 60rem;
+  margin: 0 auto;
+}
+
+.header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.4rem;
+}
+
+.muted {
+  color: var(--vscode-descriptionForeground);
+  margin: 0.25rem 0;
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.warning {
+  color: var(--vscode-editorWarning-foreground, var(--vscode-notificationsWarningIcon-foreground, #b58900));
+}
+
+.error-banner {
+  background: var(--vscode-inputValidation-errorBackground, rgba(255, 0, 0, 0.15));
+  color: var(--vscode-inputValidation-errorForeground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-inputValidation-errorBorder, transparent);
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
+}
+
+.ok {
+  color: var(--vscode-charts-green, var(--vscode-foreground));
+}
+
+.panel {
+  background: var(--vscode-editorWidget-background, transparent);
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.25)));
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+}
+
+.panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.panel h3 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 12rem 1fr;
+  gap: 0.5rem 1rem;
+  align-items: center;
+}
+
+.field-label {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9rem;
+}
+
+.value {
+  font-size: 0.9rem;
+}
+
+.value.monospace,
+.monospace {
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+select {
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border, transparent);
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+  min-width: 18rem;
+}
+
+button {
+  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+  border: 1px solid transparent;
+  padding: 0.35rem 0.85rem;
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+}
+
+button.primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button + button {
+  margin-left: 0.5rem;
+}
+
+.phase-card {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.15));
+}
+
+.phase-card:first-of-type {
+  border-top: none;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+}

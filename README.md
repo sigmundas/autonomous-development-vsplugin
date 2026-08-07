@@ -1,8 +1,16 @@
 # SemanticMatter Autonomous Development
 
-A Visual Studio Code extension that provides a **read-only observer and visual
-control plane** for the autonomous feature-development workflow implemented by
-[`quaat/autonomous-development`](https://github.com/quaat/autonomous-development).
+A Visual Studio Code extension that provides an **observer and control plane**
+for autonomous-development runs. It discovers and visualizes workflow state,
+configures new runs, launches the skill-owned Start and exact-run Resume flows,
+and exposes explicit controller actions.
+
+Version 0.4.x requires the maintained
+[`sigmundas/autonomous-development`](https://github.com/sigmundas/autonomous-development)
+core **>=0.4.0 <0.5.0** for configuration, Start, Resume, and controller
+actions. Both projects are derived from the original
+[`quaat/autonomous-development`](https://github.com/quaat/autonomous-development)
+project; its authorship, history, and MIT license are preserved.
 
 It discovers workflow runs created by the external Python controller, visualizes
 their progress and artifacts, compares prompt/specification revisions in the
@@ -10,10 +18,10 @@ native diff editor, surfaces verification and review results, and exposes safe
 controller actions — without requiring you to navigate the external state
 directory by hand. It works even when a run was started entirely outside VS Code.
 
-The extension is **observer-first**. It does not orchestrate Claude or Codex
-directly; it reads the state the existing workflow already writes and adds a
-typed, append-only event protocol (`events.jsonl`) that later live integrations
-can emit. See [ROADMAP.md](ROADMAP.md).
+The extension remains **observer-first**: the core controller and Claude skills
+own workflow orchestration. The extension reads their state, provides bounded
+configuration and lifecycle controls, and adds a typed, append-only event
+protocol (`events.jsonl`). See [ROADMAP.md](ROADMAP.md).
 
 ## Features
 
@@ -41,8 +49,9 @@ can emit. See [ROADMAP.md](ROADMAP.md).
 ## Requirements
 
 - VS Code `^1.85.0`, Node `>=18`.
-- For controller actions only: a local checkout of `quaat/autonomous-development`
-  and Python. Observer features need neither.
+- For configuration, Start, Resume, and controller actions: a local checkout of
+  `sigmundas/autonomous-development` >=0.4.0 <0.5.0 and Python. Observer-only
+  discovery and artifact viewing do not require the controller.
 - No Claude or Codex credentials are required to run or test the extension.
 
 ## Installation

@@ -145,6 +145,7 @@ export {
 } from './workflow/nextAction';
 export {
   deriveStages,
+  stageForControllerPhase,
   type WorkflowStage,
   type StageId,
   type StageStatus,
@@ -155,12 +156,41 @@ export {
 export {
   buildControllerCommand,
   isMutatingSubcommand,
+  isConfigSubcommand,
   type ControllerSubcommand,
   type ControllerInitMode,
+  type ControllerPhase,
+  type ControllerReasoningEffort,
   type ControllerContext,
   type ControllerOptions,
   type ControllerCommandLine
 } from './controller/args';
+
+// Typed contract for controller config-* JSON responses.
+export {
+  REASONING_EFFORTS,
+  CONTROLLER_PHASES,
+  WORKFLOW_MODES,
+  parseEffectiveConfiguration,
+  parseConfigValidation,
+  parseProfileList,
+  parsePresetList,
+  parseClaudeRuntimeList,
+  parseRunConfigSnapshot,
+  type ControllerWorkflowMode,
+  type CodexProfile,
+  type CodexProfileList,
+  type AutonomousPreset,
+  type PresetList,
+  type ClaudeRuntime,
+  type ClaudeRuntimeList,
+  type PhaseConfiguration,
+  type WorkflowConfiguration,
+  type EffectiveConfiguration,
+  type ConfigValidationResult,
+  type ControllerConfigResponse,
+  type RunConfigSnapshot
+} from './controller/configTypes';
 
 // Future live-integration adapter contracts (no implementations this release).
 export type {

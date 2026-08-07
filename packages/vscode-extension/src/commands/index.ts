@@ -10,6 +10,14 @@ import { runGuidedSetup } from '../setup';
 import type { DetailNode, RunNode } from '../tree/runTreeItem';
 import * as artifacts from './openArtifacts';
 import * as controller from './controllerCommands';
+import * as configCmds from '../config/configCommands';
+import type { ConfigCommandDeps } from '../config/configCommands';
+import { openAutonomousClaudeInWorkspace } from '../config/openAutonomousClaude';
+import { resumeRunInClaude } from '../config/resumeInClaude';
+import type { ClaudeTerminalRegistry } from '../config/claudeTerminalRegistry';
+import { terminalIdentityForRun } from '../config/claudeTerminalIdentity';
+import type { ConfigStore } from '../configStore';
+import { resolveWorkspaceRepoId } from '../workspaceRepoId';
 
 export interface CommandDeps {
   readonly context: vscode.ExtensionContext;
@@ -19,9 +27,31 @@ export interface CommandDeps {
   readonly getConfig: () => ExtensionConfig;
   readonly getStateHome: () => string;
   readonly refresh: () => void;
+  readonly configStore: ConfigStore;
+  readonly configDeps: ConfigCommandDeps;
+  readonly terminalRegistry: ClaudeTerminalRegistry;
 }
 
 type CommandArg = RunNode | DetailNode | DiscoveredRun | undefined;
+
+export const NEW_AUTONOMOUS_SESSION_COMMAND_IDS = [
+  'autonomousDev.startRun',
+  'autonomousDev.openAutonomousClaude',
+  'autonomousDev.launchClaude'
+] as const;
+
+export function createStartRunCommandHandler(deps: {
+  readonly resolveProjectRoot: () => Promise<string | undefined>;
+  readonly openAutonomousClaude: (projectRoot: string) => Promise<unknown>;
+}): () => Promise<void> {
+  return async () => {
+    const projectRoot = await deps.resolveProjectRoot();
+    if (!projectRoot) {
+      return;
+    }
+    await deps.openAutonomousClaude(projectRoot);
+  };
+}
 
 function isRun(value: unknown): value is DiscoveredRun {
   return (
@@ -122,17 +152,40 @@ export function registerCommands(deps: CommandDeps): void {
   register(
     'autonomousDev.openDashboard',
     runScoped((run) => {
-      DashboardPanel.show(context.extensionUri, store, deps.getConfig, log, run);
+      DashboardPanel.show(context.extensionUri, store, deps.getConfig, log, run, deps.terminalRegistry);
     })
   );
   register('autonomousDev.refreshRuns', () => deps.refresh());
-  register('autonomousDev.startRun', async () => {
-    const projectRoot = await resolveProjectRoot();
-    if (!projectRoot) {
-      return;
+  const startRun = createStartRunCommandHandler({
+    resolveProjectRoot,
+    openAutonomousClaude: (projectRoot) => {
+      const repositoryId = resolveWorkspaceRepoId(projectRoot);
+      return openAutonomousClaudeInWorkspace(projectRoot, {
+        store: deps.configStore,
+        log,
+        getControllerPath: () => deps.getConfig().controllerPath,
+        registry: deps.terminalRegistry,
+        ...(repositoryId
+          ? {
+              unboundRepository: {
+                repositoryId,
+                getKnownRunIds: () => {
+                  // Sample immediately before terminal creation. The skill-owned
+                  // run can only be created after the terminal is shown.
+                  deps.refresh();
+                  return store.allRuns
+                    .filter((run) => run.repoId === repositoryId)
+                    .map((run) => run.runId);
+                }
+              }
+            }
+          : {})
+      });
     }
-    await controller.startRun(projectRoot, controllerDeps);
   });
+  for (const id of NEW_AUTONOMOUS_SESSION_COMMAND_IDS) {
+    register(id, startRun);
+  }
 
   register('autonomousDev.openOriginalFeature', runScoped(artifacts.openOriginalFeature));
   register('autonomousDev.openEnhancedSpec', runScoped(artifacts.openEnhancedSpec));
@@ -169,6 +222,57 @@ export function registerCommands(deps: CommandDeps): void {
       getStateHome: deps.getStateHome,
       log,
       refresh: deps.refresh
+    })
+  );
+
+  // Pre-run configuration commands.
+  register('autonomousDev.configure', () => configCmds.openConfigPanel(deps.configDeps));
+  register('autonomousDev.selectPreset', () => configCmds.selectPreset(deps.configDeps));
+  register('autonomousDev.configurePlanningAgent', () =>
+    configCmds.configurePlanningAgent(deps.configDeps)
+  );
+  register('autonomousDev.configureReviewAgent', () =>
+    configCmds.configureReviewAgent(deps.configDeps)
+  );
+  register('autonomousDev.configureAdversarialReviewer', () =>
+    configCmds.configureAdversarialReviewer(deps.configDeps)
+  );
+  register('autonomousDev.configureClaudeRuntime', () =>
+    configCmds.configureClaudeRuntime(deps.configDeps)
+  );
+  register('autonomousDev.showEffectiveConfiguration', () =>
+    configCmds.showEffectiveConfiguration(deps.configDeps)
+  );
+  register('autonomousDev.validateConfiguration', () =>
+    configCmds.validateConfiguration(deps.configDeps)
+  );
+  register('autonomousDev.refreshConfiguration', async () => {
+    try {
+      await deps.configStore.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      void vscode.window.showErrorMessage(`Refresh configuration failed: ${message}`);
+    }
+  });
+  register(
+    'autonomousDev.resumeInClaude',
+    runScoped(async (run) => {
+      await resumeRunInClaude(run, {
+        store: deps.configStore,
+        log,
+        registry: deps.terminalRegistry,
+        getControllerPath: () => deps.getConfig().controllerPath
+      });
+    })
+  );
+  register(
+    'autonomousDev.focusClaudeTerminal',
+    runScoped((run) => {
+      if (!deps.terminalRegistry.focus(terminalIdentityForRun(run))) {
+        void vscode.window.showInformationMessage(
+          `No active Claude terminal is being tracked for run ${run.runId}.`
+        );
+      }
     })
   );
 }

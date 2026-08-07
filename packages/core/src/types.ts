@@ -25,6 +25,7 @@ export interface RepositoryInfo {
   readonly canonicalRoot?: string;
   readonly gitCommonDir?: string;
   readonly worktreePath?: string;
+  readonly worktreeMode?: string;
   readonly displayName?: string;
   /** Credential-stripped remote, as recorded by the controller. */
   readonly remoteDisplay?: string;

@@ -16,9 +16,11 @@ import {
   discoverTriageFiles,
   findingDispositionsFromEvents,
   parseReviewText,
+  parseRunConfigSnapshot,
   resolveArtifactPath,
   summarizeCodexArtifact,
   type AcceptanceCriteriaModel,
+  type CodexRun,
   type CodexUsageModel,
   type CumulativeAcceptanceCriterion,
   type CumulativeFinding,
@@ -26,15 +28,19 @@ import {
   type DiscoveredRun,
   type FindingDisposition,
   type LoadedEventLog,
-  type ReviewRef
+  type ReviewRef,
+  type RunConfigSnapshot,
+  type WorkflowStage
 } from '@semanticmatter/core';
 
 import type {
   DashboardAcceptanceCriteria,
   DashboardArtifact,
   DashboardCodexUsage,
+  DashboardConfigSnapshot,
   DashboardCumulativeFindings,
   DashboardDiagnostic,
+  DashboardPhaseSnapshot,
   DashboardReviewRound,
   DashboardView
 } from './viewTypes';
@@ -259,8 +265,18 @@ function codexUsageView(model: CodexUsageModel): DashboardCodexUsage {
   };
 }
 
+export interface ToDashboardViewOptions {
+  /** True when the extension is currently tracking a Claude terminal for this run. */
+  readonly claudeTerminalOpen?: boolean;
+}
+
 /** Build the dashboard view for a run. Returns a diagnostics-only shell when unparsed. */
-export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): DashboardView {
+export function toDashboardView(
+  run: DiscoveredRun,
+  eventLog: LoadedEventLog,
+  options: ToDashboardViewOptions = {}
+): DashboardView {
+  const claudeTerminalOpen = options.claudeTerminalOpen === true;
   const diagnostics = collectDiagnostics(run, eventLog);
   const timeline = eventLog.timeline.map((e) => ({
     sequence: e.sequence,
@@ -281,6 +297,7 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
       status: 'unknown',
       phase: '',
       isTerminal: false,
+      claudeTerminalOpen,
       repository: { id: run.repoId },
       stages: [],
       reviewBudget: { max: 0, consumed: 0, remaining: 0 },
@@ -310,7 +327,12 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
       artifacts: [],
       timeline,
       truncatedTimeline: eventLog.truncatedTail,
-      diagnostics
+      diagnostics,
+      currentActivity: {
+        phase: '',
+        nextActionMessage: '',
+        claudeTerminalOpen
+      }
     };
   }
 
@@ -367,6 +389,8 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
     attempts: model.verification.attemptsByName[c.name]?.length ?? 1
   }));
 
+  const latestNote = state.notes.length > 0 ? state.notes[state.notes.length - 1] : undefined;
+
   return {
     runId: state.runId,
     repoId: run.repoId,
@@ -375,6 +399,7 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
     status: model.status,
     phase: model.phase,
     isTerminal: model.isTerminal,
+    claudeTerminalOpen,
     ...(model.blockingReason !== undefined ? { blockingReason: model.blockingReason } : {}),
     repository: {
       id: state.repository.id,
@@ -384,18 +409,33 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
       ...(state.repository.worktreePath !== undefined
         ? { worktreePath: state.repository.worktreePath }
         : {}),
+      ...(state.repository.worktreeMode !== undefined
+        ? { worktreeMode: state.repository.worktreeMode }
+        : {}),
       ...(state.repository.remoteDisplay !== undefined
         ? { remoteDisplay: state.repository.remoteDisplay }
-        : {})
+        : {}),
+      ...(state.baseline?.branch ? { branch: state.baseline.branch } : {}),
+      ...(state.baseline?.commit ? { baselineCommit: state.baseline.commit } : {})
     },
     ...(state.createdAt !== undefined ? { createdAt: state.createdAt } : {}),
     ...(state.updatedAt !== undefined ? { updatedAt: state.updatedAt } : {}),
-    stages: model.stages.map((s) => ({
-      id: s.id,
-      title: s.title,
-      status: s.status,
-      ...(s.detail !== undefined ? { detail: s.detail } : {})
-    })),
+    stages: refineStagesForImplementerRunning(model.stages, {
+      claudeTerminalOpen,
+      controllerPhase: state.phase,
+      hasChecks: model.verification.hasChecks,
+      status: state.status
+    }).map((s) => {
+      const meta = stageMetaFor(s.id, run, state.codexRuns);
+      return {
+        id: s.id,
+        title: s.title,
+        status: s.status,
+        ...(s.detail !== undefined ? { detail: s.detail } : {}),
+        ...(meta.line !== undefined ? { meta: meta.line } : {}),
+        ...(meta.tooltip !== undefined ? { metaTooltip: meta.tooltip } : {})
+      };
+    }),
     reviewBudget: model.reviewBudget,
     verification: {
       hasChecks: model.verification.hasChecks,
@@ -447,6 +487,218 @@ export function toDashboardView(run: DiscoveredRun, eventLog: LoadedEventLog): D
     artifacts,
     timeline,
     truncatedTimeline: eventLog.truncatedTail,
-    diagnostics
+    diagnostics,
+    ...(buildConfigSnapshotView(state.raw)
+      ? { configSnapshot: buildConfigSnapshotView(state.raw) as DashboardConfigSnapshot }
+      : {}),
+    currentActivity: {
+      phase: model.phase,
+      nextActionMessage: model.recommendedNextAction.message,
+      ...(latestNote !== undefined ? { latestNote } : {}),
+      ...(state.updatedAt !== undefined ? { updatedAt: state.updatedAt } : {}),
+      claudeTerminalOpen
+    }
   };
+}
+
+function buildConfigSnapshotView(raw: unknown): DashboardConfigSnapshot | undefined {
+  const snap = parseRunConfigSnapshot(raw);
+  if (!snap) return undefined;
+  return toDashboardConfigSnapshot(snap);
+}
+
+function toDashboardConfigSnapshot(snap: RunConfigSnapshot): DashboardConfigSnapshot {
+  const phases: DashboardPhaseSnapshot[] = [];
+  for (const [phase, conf] of Object.entries(snap.codex)) {
+    phases.push({
+      phase,
+      ...(conf.profile !== undefined ? { profile: conf.profile } : {}),
+      ...(conf.model !== undefined ? { model: conf.model } : {}),
+      ...(conf.reasoningEffort !== undefined ? { reasoningEffort: conf.reasoningEffort } : {}),
+      ...(conf.reasoningSummary !== undefined ? { reasoningSummary: conf.reasoningSummary } : {}),
+      ...(conf.verbosity !== undefined ? { verbosity: conf.verbosity } : {})
+    });
+  }
+  return {
+    ...(snap.preset !== undefined ? { preset: snap.preset } : {}),
+    ...(snap.workflow?.workflowMode !== undefined
+      ? { workflowMode: snap.workflow.workflowMode }
+      : {}),
+    ...(snap.workflow?.maxReviewRounds !== undefined
+      ? { maxReviewRounds: snap.workflow.maxReviewRounds }
+      : {}),
+    ...(snap.claudeRuntime !== undefined ? { claudeRuntime: snap.claudeRuntime } : {}),
+    phases
+  };
+}
+
+/**
+ * Compact secondary metadata for a stage in the workflow timeline. For
+ * Codex-owned stages this pulls provider/model + reasoning-effort from the
+ * config_snapshot and prefers the concrete model reported by Codex telemetry
+ * when present. For the Claude-owned implementation stage it uses the
+ * snapshotted Claude runtime name. When neither is available, it returns
+ * empty fields — the webview then skips the meta line for that stage.
+ *
+ * Nothing here is invented: we only surface values that are already present in
+ * the run's state, config_snapshot, or codex_runs telemetry.
+ */
+export function stageMetaFor(
+  stageId: string,
+  run: DiscoveredRun,
+  codexRuns: readonly CodexRun[]
+): { line?: string; tooltip?: string } {
+  const snap = parseRunConfigSnapshot(run.state?.raw);
+  if (stageId === 'implementing') {
+    if (!snap) return {};
+    if (!snap.claudeRuntime) return {};
+    return { line: snap.claudeRuntime };
+  }
+  const phaseKey = codexPhaseForStage(stageId);
+  if (!phaseKey) return {};
+  const conf = snap?.codex[phaseKey];
+  const telemetry = codexRuns.find((r) => r.phase === phaseKey);
+  const model = telemetry?.model ?? conf?.model;
+  const effort = telemetry?.reasoningEffort ?? conf?.reasoningEffort;
+  const profileId = conf?.profile;
+  const parts: string[] = [];
+  if (model) parts.push(model);
+  else if (profileId) parts.push(profileId);
+  if (effort) parts.push(formatEffort(effort));
+  if (parts.length === 0) {
+    return snap === undefined ? { line: 'configuration unavailable' } : {};
+  }
+  const line = parts.join(' · ');
+  const tooltip = profileId ? `Profile: ${profileId}` : undefined;
+  return tooltip !== undefined ? { line, tooltip } : { line };
+}
+
+function codexPhaseForStage(stageId: string): string | undefined {
+  switch (stageId) {
+    case 'idea-enhanced':
+      return 'enhance';
+    case 'plan-proposed':
+    case 'plan-accepted':
+      return 'plan';
+    case 'independent-review':
+      return 'review';
+    case 'adversarial-review':
+      return 'adversarial';
+    default:
+      return undefined;
+  }
+}
+
+function formatEffort(effort: string): string {
+  switch (effort) {
+    case 'minimal':
+      return 'Minimal';
+    case 'low':
+      return 'Low';
+    case 'medium':
+      return 'Medium';
+    case 'high':
+      return 'High';
+    case 'xhigh':
+      return 'XHigh';
+    default:
+      return effort;
+  }
+}
+
+/**
+ * Controller phases at which the implementation action is NOT yet considered
+ * complete. Includes every phase up to and including `implementing` — while
+ * the controller is still recording any of these, an extension-managed Claude
+ * terminal for the run means Claude is doing implementation work.
+ */
+const PRE_IMPLEMENTATION_COMPLETE_PHASES: ReadonlySet<string> = new Set([
+  'initialized',
+  'enhance',
+  'enhancing',
+  'idea-enhanced',
+  'spec-accepted',
+  'plan-proposed',
+  'plan-accepted',
+  'implementing'
+]);
+
+/**
+ * Phases at which the controller has explicitly transitioned to verification.
+ * Only these count for the "controller state has transitioned to verification"
+ * condition of the Verification-active rule.
+ */
+const VERIFICATION_PHASES: ReadonlySet<string> = new Set([
+  'verification',
+  'verification-failed'
+]);
+
+export interface ImplementerRefinementFacts {
+  /** True iff an extension-managed Claude terminal is currently alive for the run. */
+  readonly claudeTerminalOpen: boolean;
+  /** The controller's authoritative phase, verbatim from run-state.json. */
+  readonly controllerPhase: string;
+  /** True iff at least one verification action has started or been recorded. */
+  readonly hasChecks: boolean;
+  /** Normalised run status (used to short-circuit for terminal statuses). */
+  readonly status: string;
+}
+
+/**
+ * Post-pass refinement of the canonical stages returned by the core evaluator.
+ * Enforces two run-scoped invariants that require VS Code-host awareness
+ * (specifically, whether an extension-managed Claude terminal is alive for the
+ * run):
+ *
+ * 1. While an extension-managed Claude terminal is alive AND the controller
+ *    has NOT recorded completion of the implementation action, Implementing
+ *    remains active. "Recorded completion" means the controller has advanced
+ *    the phase past `implementing` (or the earlier planning/enhance phases).
+ *
+ * 2. Verification may become active only when ALL THREE conditions hold:
+ *    (a) the implementation action has completed (controller phase is no
+ *        longer one of the pre-implementation-complete phases),
+ *    (b) the controller state has transitioned to verification (phase is
+ *        `verification` or `verification-failed`), and
+ *    (c) at least one verification action has started or been recorded
+ *        (hasChecks is true).
+ *    Otherwise Verification remains pending — never promoted to active by an
+ *    earlier heuristic. Verification=failed continues to be shown when checks
+ *    have run but did not all pass; that is orthogonal to the active rule.
+ */
+export function refineStagesForImplementerRunning(
+  stages: readonly WorkflowStage[],
+  facts: ImplementerRefinementFacts
+): WorkflowStage[] {
+  // Terminal statuses: no refinement — the canonical stages already encode the
+  // right story (complete / blocked / cancelled / archived).
+  if (
+    facts.status === 'complete' ||
+    facts.status === 'cancelled' ||
+    facts.status === 'archived'
+  ) {
+    return [...stages];
+  }
+
+  const implementationCompleted = !PRE_IMPLEMENTATION_COMPLETE_PHASES.has(facts.controllerPhase);
+  const verificationCanBeActive =
+    implementationCompleted && VERIFICATION_PHASES.has(facts.controllerPhase) && facts.hasChecks;
+
+  return stages.map((stage): WorkflowStage => {
+    if (stage.id === 'implementing') {
+      // Rule 1: hold Implementing at active while Claude is still working.
+      if (facts.claudeTerminalOpen && !implementationCompleted) {
+        return { ...stage, status: 'active' };
+      }
+      return stage;
+    }
+    if (stage.id === 'verification') {
+      // Rule 2: Verification may be active only when all three conditions hold.
+      if (stage.status === 'active' && !verificationCanBeActive) {
+        return { ...stage, status: 'pending' };
+      }
+      return stage;
+    }
+    return stage;
+  });
 }

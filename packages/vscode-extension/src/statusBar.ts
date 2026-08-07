@@ -40,6 +40,18 @@ export class RunStatusBar implements vscode.Disposable {
     const tip = new vscode.MarkdownString();
     tip.appendMarkdown(`**Autonomous Development run ${run.runId}**\n\n`);
     tip.appendMarkdown(`- Status: ${run.model.status}\n`);
+    const worktreeMode = run.state?.repository.worktreeMode;
+    if (worktreeMode) {
+      tip.appendMarkdown(
+        `- Checkout mode: ${
+          worktreeMode === 'current'
+            ? 'current checkout'
+            : worktreeMode === 'isolated'
+              ? 'isolated worktree'
+              : worktreeMode
+        }\n`
+      );
+    }
     tip.appendMarkdown(
       `- Gates: ${run.model.gatesPass ? 'passing' : `${run.model.completionGateFailures.length} unresolved`}\n`
     );

@@ -3,6 +3,11 @@
 Reflects controller **v0.3.0** (`.claude-plugin/plugin.json` version `0.3.0`,
 git revision `a72f740`).
 
+This is the preserved original-upstream baseline. The VSIX 0.4.x runtime
+compatibility requirement is the maintained `sigmundas/autonomous-development`
+core **>=0.4.0 <0.5.0**; its additive configuration and autonomous-resume
+contracts do not change run-state `schema_version` 2.
+
 This document records the **authoritative** state layout, schemas, controller
 interface, completion-gate logic, lifecycle, and safety boundaries of the
 `quaat/autonomous-development` plugin, as derived directly from its source
@@ -98,6 +103,7 @@ Canonical shape (from `cmd_init`, mutated by other commands):
     "canonical_root": "/abs/path",
     "git_common_dir": "/abs/path/.git",
     "worktree_path": "/abs/path",
+    "worktree_mode": "isolated",        // NEW: isolated (default) or current
     "display_name": "repo-name",
     "remote_display": "https://host/org/repo"   // credentials already stripped
   },
@@ -485,7 +491,7 @@ string):
 | Subcommand             | Args                                                                                                                         | Mutating |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------- |
 | `doctor`               | —                                                                                                                            | no       |
-| `init`                 | `--feature` (req) `[--label]` `[--mode auto\|lean\|standard\|rigorous]` `[--max-review-rounds 1..5]` `[--reuse]` `[--force]` | writes   |
+| `init`                 | `--feature` (req) `[--label]` `[--mode auto\|lean\|standard\|rigorous]` `[--worktree-mode isolated\|current]` `[--allow-main]` `[--max-review-rounds 1..5]` `[--reuse]` `[--force]` | writes   |
 | `codex`                | `--phase enhance\|plan\|review\|adversarial` (req) `[--timeout N]`                                                           | writes   |
 | `accept`               | `--kind spec\|plan` (req) `[--file F]` `[--source J]` `[--decisions J]`                                                      | writes   |
 | `run-check`            | `--name` (req) `[--output summary\|full]` `[--failure-tail-lines N]` `[--timeout N]` `<command…>`                            | writes   |
@@ -533,7 +539,8 @@ includes them.
 
 `requested_mode` is one of `auto | lean | standard | rigorous` (default `auto`,
 set at `init --mode`). `effective_mode` is resolved by `select_mode` and recorded
-with `mode_reasons`:
+with `mode_reasons`. `repository.worktree_mode` records whether the run was
+started in `isolated` (default) or `current` checkout mode:
 
 - **auto** — escalates conservatively to **rigorous** when `classify_feature_risk`
   detects any high-risk signal in the feature text; otherwise resolves to
@@ -545,6 +552,10 @@ with `mode_reasons`:
   no spec exists, and the only mode that auto-sets
   `risk.requires_adversarial_review = true` at init (so the adversarial gate, §6
   #10, applies).
+
+`current` checkout mode is orthogonal to workflow depth: it skips disposable
+worktree creation, records the current checkout as both canonical and worktree
+paths, and refuses `main`/`master` unless the caller also passes `--allow-main`.
 
 `effective_mode` (defaulting to `standard` when absent) drives `compute_next_action`
 (§7). `requested_mode` records what the user asked for; explicit non-`auto` modes

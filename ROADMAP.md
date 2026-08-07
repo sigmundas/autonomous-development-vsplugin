@@ -1,15 +1,23 @@
 # Roadmap
 
-This release is deliberately an **observer + protocol foundation**. It
-visualizes and safely controls runs created by the existing
-`quaat/autonomous-development` workflow, and it introduces the typed `RunEvent`
-log so later live integrations have a stable contract to emit against. It does
-**not** orchestrate Claude or Codex directly.
+The extension remains an **observer + protocol foundation**, with bounded
+configuration and explicit Start, Resume, Cancel, and controller controls.
+Workflow orchestration remains owned by the autonomous-development controller
+and Claude skills; the extension launches and observes those workflows rather
+than reimplementing their state machine.
+
+## Shipped (v0.4)
+
+Requires `sigmundas/autonomous-development` **>=0.4.0 <0.5.0** for the 0.4
+configuration and lifecycle controls. Run-state remains at `schema_version` 2
+(versions 1 and 2 supported). The pinned `quaat/autonomous-development`
+revision remains the preserved upstream compatibility baseline.
 
 ## Shipped (v0.2)
 
-Compatibility target: controller **v0.3.0**, run-state `schema_version` 2 (1 and 2
-supported). See [docs/REFERENCE.md](docs/REFERENCE.md) and the pinned
+Historical compatibility target: original upstream controller **v0.3.0**,
+run-state `schema_version` 2 (1 and 2 supported). See
+[docs/REFERENCE.md](docs/REFERENCE.md) and the pinned
 [resources/reference-lock.json](resources/reference-lock.json).
 
 - Cumulative review ledger with resolution provenance, acceptance-criteria matrix

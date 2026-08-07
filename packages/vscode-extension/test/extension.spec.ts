@@ -28,7 +28,19 @@ const CONTRIBUTED_COMMANDS = [
   'cancelRun',
   'archiveRun',
   'revealRunDirectory',
-  'setupController'
+  'setupController',
+  'configure',
+  'selectPreset',
+  'configurePlanningAgent',
+  'configureReviewAgent',
+  'configureAdversarialReviewer',
+  'configureClaudeRuntime',
+  'showEffectiveConfiguration',
+  'validateConfiguration',
+  'launchClaude',
+  'refreshConfiguration',
+  'openAutonomousClaude',
+  'startRun'
 ].map((c) => `autonomousDev.${c}`);
 
 let fixtures: Fixtures;
@@ -74,6 +86,18 @@ describe('activation', () => {
       assert.ok(all.includes(cmd), `command not registered: ${cmd}`);
     }
   });
+
+  it('exposes the controller-free config store as part of the observer API', () => {
+    const store = api.getConfigStore();
+    assert.ok(store, 'config store should be exposed for tests');
+    // No controller path is set in the test host, so the snapshot must report
+    // the unavailable state and NOT invent default profiles/presets.
+    assert.equal(store.current.controllerAvailable, false);
+    assert.deepEqual(store.current.effective, undefined);
+    assert.deepEqual(store.current.presets, undefined);
+    assert.deepEqual(store.current.profiles, undefined);
+    assert.deepEqual(store.current.runtimes, undefined);
+  });
 });
 
 describe('discovery and grouping', () => {
@@ -88,6 +112,7 @@ describe('discovery and grouping', () => {
     const active = api.getRunsForGroup('active').map((r) => r.runId);
     for (const id of [
       'initialized',
+      'currentCheckout',
       'implementing',
       'verificationFailed',
       'changesRequired',

@@ -310,7 +310,8 @@ export function evaluateWorkflow(input: EvaluatorInput): WorkflowModel {
     requiresAdversarial,
     hasAdversarial,
     adversarialPassed: isPass(latestAdversarialVerdict),
-    nextActionCode: recommendedNextAction.code
+    nextActionCode: recommendedNextAction.code,
+    ...(state.phase && state.phase.length > 0 ? { controllerPhase: state.phase } : {})
   };
   const stages = deriveStages(stageFacts);
 

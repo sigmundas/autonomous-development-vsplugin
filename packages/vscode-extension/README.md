@@ -114,6 +114,11 @@ writes state; **Refresh Runs** forces a reload.
 
 ## Pre-run configuration
 
+New users should start with the
+[Configuration guide](https://github.com/sigmundas/autonomous-development-vsplugin/blob/main/docs/CONFIGURATION.md),
+which covers the required files, profile naming, presets, runtimes, and the
+four Codex phases without requiring knowledge of the controller API.
+
 The **Configuration** entry in the Autonomous Development activity-bar container
 is visible immediately when you open a workspace — even before any run has been
 created and before the state-home directory exists. Selecting it opens the
@@ -129,7 +134,8 @@ Everything the editor changes goes through the controller's JSON contract:
   `config-set-active-preset`, then reloads `config-show` and refreshes every
   displayed value from the controller response.
 - `config-set-phase` writes the per-phase profile and reasoning effort. Reasoning
-  effort is set independently for planning, review, and adversarial review.
+  effort is set independently for enhance, planning, review, and adversarial
+  review.
 - `config-list-claude-runtimes` populates the Claude runtime dropdown;
   `config-set-claude-runtime` writes the choice onto the active preset. The
   extension never rewrites Claude credentials or provider API keys — it only
@@ -197,13 +203,13 @@ and it never persists Claude credentials or provider API keys.
 
 ### Troubleshooting
 
-| Situation                                                             | Likely cause                                                       | What to do                                                                |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| "Controller not configured" in the Configuration tree                 | `autonomousDev.controllerPath` is empty                            | Run **Set Up Controller** to point at `scripts/controller.py`.            |
-| Dropdowns are empty                                                   | The controller succeeded but no profiles/presets/runtimes are defined | Add them to `config.toml` (see the controller's `docs/config-contract.md`) |
-| A phase profile is flagged as missing or invalid                      | `$CODEX_HOME` does not contain the selected profile                | Install / fix the Codex profile under `~/.codex/`.                        |
-| "Launcher not executable" when launching Claude                       | The launcher file exists but its executable bit is not set         | `chmod +x` the launcher, then re-run **Start Autonomous Run**.            |
-| Azure Codex fails on its first real phase with codex-cli 0.147.0      | Upstream Responses Lite tool serialization is incompatible with Azure | Temporarily pin codex-cli 0.146.1; see the [controller compatibility note](https://github.com/sigmundas/autonomous-development#azure-openai--codex-cli-compatibility). |
+| Situation                                                        | Likely cause                                                          | What to do                                                                                                                                                             |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Controller not configured" in the Configuration tree            | `autonomousDev.controllerPath` is empty                               | Run **Set Up Controller** to point at `scripts/controller.py`.                                                                                                         |
+| Dropdowns are empty                                              | The controller succeeded but no profiles/presets/runtimes are defined | Follow the [Configuration guide](https://github.com/sigmundas/autonomous-development-vsplugin/blob/main/docs/CONFIGURATION.md) to create them.                         |
+| A phase profile is flagged as missing or invalid                 | `$CODEX_HOME` does not contain the selected profile                   | Install / fix the Codex profile under `~/.codex/`.                                                                                                                     |
+| "Launcher not executable" when launching Claude                  | The launcher file exists but its executable bit is not set            | `chmod +x` the launcher, then re-run **Start Autonomous Run**.                                                                                                         |
+| Azure Codex fails on its first real phase with codex-cli 0.147.0 | Upstream Responses Lite tool serialization is incompatible with Azure | Temporarily pin codex-cli 0.146.1; see the [controller compatibility note](https://github.com/sigmundas/autonomous-development#azure-openai--codex-cli-compatibility). |
 
 With the validated Azure profile, a large `/models` catalog-decode warning can
 still appear under codex-cli 0.146.1. That warning is non-fatal when the direct

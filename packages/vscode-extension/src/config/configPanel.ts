@@ -13,6 +13,9 @@ import { ControllerError } from '../controller/controllerService';
 import type { OutputLog } from '../output';
 import { isWorkspaceTrusted } from '../trust';
 
+const CONFIGURATION_GUIDE_URL =
+  'https://github.com/sigmundas/autonomous-development-vsplugin/blob/main/docs/CONFIGURATION.md';
+
 /** Messages the webview posts back to the extension host. Validated at boundary. */
 type WebviewInbound =
   | { readonly type: 'ready' }
@@ -28,7 +31,9 @@ type WebviewInbound =
     }
   | { readonly type: 'validate' }
   | { readonly type: 'startRun' }
-  | { readonly type: 'setupController' };
+  | { readonly type: 'setupController' }
+  | { readonly type: 'openConfig' }
+  | { readonly type: 'openGuide' };
 
 /** Serialized view sent to the webview. Never carries secrets. */
 export interface ConfigView {
@@ -36,6 +41,7 @@ export interface ConfigView {
   readonly error?: string;
   readonly configPath?: string;
   readonly configExists: boolean;
+  readonly codexHome?: string;
   readonly activePreset?: string;
   readonly workflowMode?: string;
   readonly maxReviewRounds?: number;
@@ -113,7 +119,10 @@ function toView(snap: ConfigSnapshot): ConfigView {
       ...(profileId !== undefined ? { profileId } : {}),
       ...(profile !== undefined ? { profileLabel: friendlyProfileLabel(profile) } : {}),
       ...(conf?.reasoningEffort !== undefined
-        ? { reasoningEffort: conf.reasoningEffort, effortLabel: reasoningEffortLabel(conf.reasoningEffort) }
+        ? {
+            reasoningEffort: conf.reasoningEffort,
+            effortLabel: reasoningEffortLabel(conf.reasoningEffort)
+          }
         : {}),
       profileMissing: missing,
       profileInvalid: invalid
@@ -125,6 +134,7 @@ function toView(snap: ConfigSnapshot): ConfigView {
     ...(snap.error ? { error: snap.error } : {}),
     ...(effective?.configPath ? { configPath: effective.configPath } : {}),
     configExists: effective?.configExists ?? false,
+    ...(snap.profiles?.codexHome ? { codexHome: snap.profiles.codexHome } : {}),
     ...(activePreset ? { activePreset } : {}),
     ...(effective?.effective.workflow.workflowMode
       ? { workflowMode: effective.effective.workflow.workflowMode }
@@ -288,13 +298,58 @@ export class ConfigPanel {
       case 'setupController':
         await vscode.commands.executeCommand('autonomousDev.setupController');
         return;
+      case 'openConfig':
+        await this.openConfig();
+        return;
+      case 'openGuide':
+        await this.openGuide();
+        return;
+    }
+  }
+
+  private async openConfig(): Promise<void> {
+    const effective = this.store.current.effective;
+    if (!effective?.configPath) {
+      void vscode.window.showWarningMessage(
+        'The resolved Autonomous Development config.toml path is unavailable.'
+      );
+      return;
+    }
+    if (!effective.configExists) {
+      void vscode.window.showWarningMessage(
+        `Autonomous Development config.toml has not been created at ${effective.configPath}.`
+      );
+      return;
+    }
+    try {
+      const document = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(effective.configPath)
+      );
+      await vscode.window.showTextDocument(document, { preview: true });
+    } catch (err) {
+      this.reportError('Open config.toml', err);
+    }
+  }
+
+  private async openGuide(): Promise<void> {
+    try {
+      const opened = await vscode.env.openExternal(vscode.Uri.parse(CONFIGURATION_GUIDE_URL));
+      if (!opened) {
+        void vscode.window.showWarningMessage(
+          'Unable to open the Autonomous Development configuration guide.'
+        );
+      }
+    } catch (err) {
+      this.reportError('Open configuration guide', err);
     }
   }
 
   private requireProjectRoot(): string | undefined {
     const root = this.getProjectRoot();
     if (!root) {
-      void vscode.window.showErrorMessage('Open a folder to change autonomous-development configuration.');
+      void vscode.window.showErrorMessage(
+        'Open a folder to change autonomous-development configuration.'
+      );
     }
     return root;
   }

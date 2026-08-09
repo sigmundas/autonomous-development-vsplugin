@@ -92,7 +92,7 @@
     "commands": [
       {
         "command": "autonomousDev.startRun",
-        "title": "Start Autonomous Run",
+        "title": "New Run…",
         "category": "Autonomous Development",
         "icon": "$(add)"
       },

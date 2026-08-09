@@ -7,6 +7,11 @@ export interface RunNode {
   readonly run: DiscoveredRun;
 }
 
+/** Persistent, self-explanatory start action shown at the top of Active Runs. */
+export interface NewRunNode {
+  readonly kind: 'new-run';
+}
+
 /** A child detail row under a run. */
 export interface DetailNode {
   readonly kind: 'detail';
@@ -18,7 +23,21 @@ export interface DetailNode {
   readonly icon?: vscode.ThemeIcon;
 }
 
-export type TreeNode = RunNode | DetailNode;
+export type TreeNode = NewRunNode | RunNode | DetailNode;
+
+export function buildNewRunTreeItem(): vscode.TreeItem {
+  const item = new vscode.TreeItem('New run…', vscode.TreeItemCollapsibleState.None);
+  item.id = 'autonomousDev.newRun';
+  item.description = 'Choose run mode and describe the feature';
+  item.tooltip = 'Start a new autonomous-development run';
+  item.iconPath = new vscode.ThemeIcon('add');
+  item.contextValue = 'autonomousDev.newRun';
+  item.command = {
+    command: 'autonomousDev.startRun',
+    title: 'Start New Run'
+  };
+  return item;
+}
 
 function statusIcon(status: RunStatus, hasModel: boolean): vscode.ThemeIcon {
   if (!hasModel) {
@@ -55,7 +74,22 @@ function runDescription(run: DiscoveredRun): string {
   }
   const status = run.model?.status ?? run.state.status;
   const phase = run.model?.phase ?? run.state.phase;
+  const review = run.model?.review;
+  if (status === 'active' && review?.hasReviews) {
+    const round = review.latestRound !== undefined ? `round ${review.latestRound}` : 'review';
+    const verdict = review.latestVerdict ? ` · ${displayVerdict(review.latestVerdict)}` : '';
+    if (phase === 'triage') {
+      return `fixing findings · ${round}${verdict}`;
+    }
+    if (phase === 'review' || phase === 'reviewing' || phase === 'independent-review') {
+      return `re-reviewing · after ${round}${verdict}`;
+    }
+  }
   return phase && phase !== status ? `${status} · ${phase}` : status;
+}
+
+function displayVerdict(verdict: string): string {
+  return verdict.replaceAll('_', ' ');
 }
 
 function worktreeModeLabel(mode?: string): string | undefined {
@@ -204,13 +238,27 @@ export function detailNodes(run: DiscoveredRun): DetailNode[] {
       vIcon
     );
 
-    const verdict = model.review.latestVerdict ?? 'none';
+    const verdict = model.review.latestVerdict
+      ? displayVerdict(model.review.latestVerdict)
+      : 'none';
+    const completedRound = model.review.latestRound ?? model.reviewBudget.consumed;
     push(
       'review',
-      'Review',
-      `round ${model.reviewBudget.consumed}/${model.reviewBudget.max} · ${verdict}`,
+      model.review.hasReviews ? 'Latest completed review' : 'Review',
+      model.review.hasReviews
+        ? `round ${completedRound} · ${verdict}`
+        : `not run · budget ${model.reviewBudget.max}`,
       new vscode.ThemeIcon('comment-discussion')
     );
+
+    if (model.review.hasReviews && run.state.phase === 'triage') {
+      push(
+        'review-activity',
+        'Current activity',
+        `Claude is triaging and fixing findings from round ${completedRound}`,
+        new vscode.ThemeIcon('tools')
+      );
+    }
 
     if (model.adversarial.required) {
       push(

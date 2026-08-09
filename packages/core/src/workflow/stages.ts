@@ -47,6 +47,10 @@ export interface StageFacts {
   readonly verificationPassed: boolean;
   readonly hasReviews: boolean;
   readonly reviewPassed: boolean;
+  /** Latest completed review round, when one has been recorded. */
+  readonly latestReviewRound?: number;
+  /** Effective verdict for the latest completed review. */
+  readonly latestReviewVerdict?: string;
   readonly severeFindingCount: number;
   readonly requiresAdversarial: boolean;
   readonly hasAdversarial: boolean;
@@ -171,7 +175,10 @@ function reached(id: StageId, f: StageFacts): boolean {
     case 'verification':
       return f.hasChecks && f.verificationPassed;
     case 'independent-review':
-      return f.hasReviews && f.reviewPassed;
+      // A review remains historical fact even when its verdict requires fixes.
+      // Whether another review is needed is represented by the active state and
+      // detail below, not by pretending the completed round never happened.
+      return f.hasReviews;
     case 'triage':
       return f.hasReviews && f.reviewPassed && f.severeFindingCount === 0;
     case 'adversarial-review':
@@ -239,6 +246,10 @@ export function deriveStages(f: StageFacts): WorkflowStage[] {
   return STAGE_ORDER.map((stage, i): WorkflowStage => {
     const base = { id: stage.id, title: stage.title };
 
+    if (stage.id === 'idea-enhanced' && !f.hasEnhance && f.acceptedSpecExists) {
+      return { ...base, status: 'skipped', detail: 'Not run' };
+    }
+
     if (stage.id === 'adversarial-review' && !f.requiresAdversarial) {
       return { ...base, status: 'skipped', detail: 'Not required by risk gate' };
     }
@@ -251,6 +262,31 @@ export function deriveStages(f: StageFacts): WorkflowStage[] {
         return { ...base, status: reached('completion-evaluation', f) ? 'complete' : 'skipped' };
       }
       return { ...base, status: 'pending' };
+    }
+
+    if (stage.id === 'independent-review' && f.hasReviews) {
+      const round = f.latestReviewRound;
+      const verdict = displayVerdict(f.latestReviewVerdict);
+      const history = [round !== undefined ? `Round ${round}` : 'Review completed', verdict]
+        .filter((part): part is string => Boolean(part))
+        .join(' · ');
+      if (i === activeIndex) {
+        const suffix =
+          f.controllerPhase === 'review' || f.controllerPhase === 'reviewing'
+            ? 're-review in progress'
+            : 're-review required';
+        return { ...base, status: 'active', detail: `${history} · ${suffix}` };
+      }
+      return { ...base, status: 'complete', detail: history };
+    }
+
+    if (stage.id === 'triage' && i === activeIndex && f.hasReviews) {
+      const round = f.latestReviewRound;
+      const verdict = displayVerdict(f.latestReviewVerdict);
+      const detail = [round !== undefined ? `After round ${round}` : undefined, verdict]
+        .filter((part): part is string => Boolean(part))
+        .join(' · ');
+      return { ...base, status: 'active', ...(detail ? { detail } : {}) };
     }
 
     if (reached(stage.id, f)) {
@@ -289,4 +325,9 @@ export function deriveStages(f: StageFacts): WorkflowStage[] {
     }
     return { ...base, status: 'pending' };
   });
+}
+
+function displayVerdict(verdict: string | undefined): string | undefined {
+  const value = verdict?.trim();
+  return value ? value.replaceAll('_', ' ') : undefined;
 }

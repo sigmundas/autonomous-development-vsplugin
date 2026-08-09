@@ -306,6 +306,10 @@ export function evaluateWorkflow(input: EvaluatorInput): WorkflowModel {
     verificationPassed: verification.passed,
     hasReviews,
     reviewPassed: isPass(effectiveReviewVerdict),
+    ...(latestRef?.round !== undefined ? { latestReviewRound: latestRef.round } : {}),
+    ...(effectiveReviewVerdict !== undefined
+      ? { latestReviewVerdict: effectiveReviewVerdict }
+      : {}),
     severeFindingCount,
     requiresAdversarial,
     hasAdversarial,

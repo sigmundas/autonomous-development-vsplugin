@@ -15,27 +15,31 @@ describe('normal Start flow', () => {
 
   it('resolves the project root and opens exactly one Autonomous Claude session', async () => {
     let resolveCalls = 0;
-    const openedRoots: string[] = [];
+    const opened: { root: string; mode: string; feature: string }[] = [];
     const handler = createStartRunCommandHandler({
       resolveProjectRoot: async () => {
         resolveCalls += 1;
         return '/work/repo';
       },
-      openAutonomousClaude: async (projectRoot) => {
-        openedRoots.push(projectRoot);
+      selectRunMode: async () => 'feature',
+      promptFeature: async () => 'Add run history',
+      openAutonomousClaude: async (projectRoot, bootstrap) => {
+        opened.push({ root: projectRoot, ...bootstrap });
       }
     });
 
     await handler();
 
     assert.equal(resolveCalls, 1);
-    assert.deepEqual(openedRoots, ['/work/repo']);
+    assert.deepEqual(opened, [{ root: '/work/repo', mode: 'feature', feature: 'Add run history' }]);
   });
 
   it('does not open a session when project-root selection is cancelled', async () => {
     let openCalls = 0;
     const handler = createStartRunCommandHandler({
       resolveProjectRoot: async () => undefined,
+      selectRunMode: async () => 'feature',
+      promptFeature: async () => 'Feature',
       openAutonomousClaude: async () => {
         openCalls += 1;
       }
@@ -46,12 +50,37 @@ describe('normal Start flow', () => {
     assert.equal(openCalls, 0);
   });
 
+  it('does not launch when mode selection is cancelled', async () => {
+    let openCalls = 0;
+    const handler = createStartRunCommandHandler({
+      resolveProjectRoot: async () => '/work/repo',
+      selectRunMode: async () => undefined,
+      promptFeature: async () => 'Feature',
+      openAutonomousClaude: async () => {
+        openCalls += 1;
+      }
+    });
+    await handler();
+    assert.equal(openCalls, 0);
+  });
+
+  it('does not launch when the feature description is cancelled', async () => {
+    let openCalls = 0;
+    const handler = createStartRunCommandHandler({
+      resolveProjectRoot: async () => '/work/repo',
+      selectRunMode: async () => 'current',
+      promptFeature: async () => undefined,
+      openAutonomousClaude: async () => {
+        openCalls += 1;
+      }
+    });
+    await handler();
+    assert.equal(openCalls, 0);
+  });
+
   it('has one production Start path and no controller-owned init helper', () => {
     const extensionRoot = path.resolve(__dirname, '../..');
-    const commandsSource = readFileSync(
-      path.join(extensionRoot, 'src/commands/index.ts'),
-      'utf8'
-    );
+    const commandsSource = readFileSync(path.join(extensionRoot, 'src/commands/index.ts'), 'utf8');
     const controllerCommandsSource = readFileSync(
       path.join(extensionRoot, 'src/commands/controllerCommands.ts'),
       'utf8'
@@ -93,20 +122,38 @@ describe('normal Start flow', () => {
     const start = manifest.contributes.commands.find(
       (command) => command.command === 'autonomousDev.startRun'
     );
-    assert.equal(start?.title, 'Start Autonomous Run');
+    assert.equal(start?.title, 'New Run…');
     assert.ok(
       manifest.contributes.commands.some(
         (command) => command.command === 'autonomousDev.openAutonomousClaude'
       )
     );
-    for (const command of [
-      'autonomousDev.openAutonomousClaude',
-      'autonomousDev.launchClaude'
-    ]) {
+    for (const command of ['autonomousDev.openAutonomousClaude', 'autonomousDev.launchClaude']) {
       const compatibilityAlias = manifest.contributes.menus.commandPalette.find(
         (item) => item.command === command
       );
       assert.equal(compatibilityAlias?.when, 'false');
     }
+  });
+
+  it('shows a persistent, descriptive New run action in Active Runs', () => {
+    const extensionRoot = path.resolve(__dirname, '../..');
+    const providerSource = readFileSync(
+      path.join(extensionRoot, 'src/tree/runTreeProvider.ts'),
+      'utf8'
+    );
+    const itemSource = readFileSync(path.join(extensionRoot, 'src/tree/runTreeItem.ts'), 'utf8');
+    assert.match(providerSource, /this\.group === 'active'.*kind: 'new-run'/s);
+    assert.match(itemSource, /new vscode\.TreeItem\('New run…'/);
+    assert.match(itemSource, /command: 'autonomousDev\.startRun'/);
+    assert.match(itemSource, /Choose run mode and describe the feature/);
+  });
+
+  it('offers all three supported run modes in the guided start flow', () => {
+    const extensionRoot = path.resolve(__dirname, '../..');
+    const commandsSource = readFileSync(path.join(extensionRoot, 'src/commands/index.ts'), 'utf8');
+    assert.match(commandsSource, /Feature branch \/ isolated worktree/);
+    assert.match(commandsSource, /label: 'Current branch'/);
+    assert.match(commandsSource, /label: 'Main'/);
   });
 });

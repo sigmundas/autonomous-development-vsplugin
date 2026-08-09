@@ -4,6 +4,7 @@ import type { RunGroup } from '@semanticmatter/core';
 import type { RunStore } from '../runStore';
 import {
   buildDetailTreeItem,
+  buildNewRunTreeItem,
   buildRunTreeItem,
   detailNodes,
   type RunNode,
@@ -29,12 +30,16 @@ export class RunTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   }
 
   getTreeItem(element: TreeNode): vscode.TreeItem {
+    if (element.kind === 'new-run') return buildNewRunTreeItem();
     return element.kind === 'run' ? buildRunTreeItem(element) : buildDetailTreeItem(element);
   }
 
   getChildren(element?: TreeNode): TreeNode[] {
     if (!element) {
-      return this.store.runsForGroup(this.group).map((run): RunNode => ({ kind: 'run', run }));
+      const runs = this.store
+        .runsForGroup(this.group)
+        .map((run): RunNode => ({ kind: 'run', run }));
+      return this.group === 'active' ? [{ kind: 'new-run' }, ...runs] : runs;
     }
     if (element.kind === 'run') {
       return detailNodes(element.run);

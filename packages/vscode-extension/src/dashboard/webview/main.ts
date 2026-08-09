@@ -86,11 +86,7 @@ function checkoutLabel(mode?: string): string | undefined {
 function renderTaskBlock(view: DashboardView): HTMLElement {
   const text = view.feature || view.runId;
   const long = text.length > TASK_COLLAPSED_MAX_CHARS;
-  const body = el(
-    'p',
-    { class: `task-body${long ? ' collapsed' : ''}`, id: 'task-body' },
-    [text]
-  );
+  const body = el('p', { class: `task-body${long ? ' collapsed' : ''}`, id: 'task-body' }, [text]);
   const wrap = el('div', { class: 'task-wrap' }, [
     el('h2', { class: 'small-label' }, ['Task']),
     body
@@ -163,24 +159,16 @@ function renderHeader(view: DashboardView): HTMLElement {
   const actions = el('div', { class: 'run-actions' }, [
     canResume
       ? terminalOpen
-        ? button(
-            'Focus Claude terminal',
-            () => command('autonomousDev.focusClaudeTerminal'),
-            {
-              class: 'primary',
-              title:
-                'An extension-tracked Claude terminal is already open for this run. Clicking will reveal it — a new session will not be spawned.'
-            }
-          )
-        : button(
-            '▶ Resume in Claude',
-            () => command('autonomousDev.resumeInClaude'),
-            {
-              class: 'primary',
-              title:
-                "Launch the run's snapshotted Claude runtime rooted at its worktree and continue from the recorded phase."
-            }
-          )
+        ? button('Focus Claude terminal', () => command('autonomousDev.focusClaudeTerminal'), {
+            class: 'primary',
+            title:
+              'An extension-tracked Claude terminal is already open for this run. Clicking will reveal it — a new session will not be spawned.'
+          })
+        : button('▶ Resume in Claude', () => command('autonomousDev.resumeInClaude'), {
+            class: 'primary',
+            title:
+              "Launch the run's snapshotted Claude runtime rooted at its worktree and continue from the recorded phase."
+          })
       : null,
     canCancel
       ? button('Cancel run', () => command('autonomousDev.cancelRun'), { class: 'danger' })
@@ -205,12 +193,24 @@ function renderCurrentActivity(view: DashboardView): HTMLElement | null {
     kv('Phase', activity.phase || '—'),
     kv('Next', activity.nextActionMessage || '—')
   ];
+  if (view.review.hasReviews) {
+    const round =
+      view.review.latestRound !== undefined ? `Round ${view.review.latestRound}` : 'Completed';
+    const verdict = view.review.latestVerdict?.replaceAll('_', ' ');
+    cells.push(kv('Latest Codex review', verdict ? `${round} · ${verdict}` : round));
+    if (activity.phase === 'triage') {
+      cells.push(kv('Now', 'Codex review finished; Claude is triaging and fixing findings'));
+    } else if (
+      activity.phase === 'review' ||
+      activity.phase === 'reviewing' ||
+      activity.phase === 'independent-review'
+    ) {
+      cells.push(kv('Now', 'Earlier review finished; Codex re-review is in progress'));
+    }
+  }
   if (activity.latestNote) cells.push(kv('Latest note', activity.latestNote));
   cells.push(
-    kv(
-      'Claude terminal',
-      activity.claudeTerminalOpen ? 'open (this extension)' : 'not open'
-    )
+    kv('Claude terminal', activity.claudeTerminalOpen ? 'open (this extension)' : 'not open')
   );
   if (activity.updatedAt) cells.push(kv('Updated', activity.updatedAt));
   return section(
@@ -256,6 +256,9 @@ function renderStages(stages: readonly DashboardStage[]): HTMLElement {
           [s.meta]
         )
       );
+    }
+    if (s.detail) {
+      contents.push(el('span', { class: 'stage-detail' }, [s.detail]));
     }
     const li = el(
       'li',

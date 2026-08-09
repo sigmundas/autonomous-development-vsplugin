@@ -558,7 +558,9 @@ export function stageMetaFor(
   if (!phaseKey) return {};
   const conf = snap?.codex[phaseKey];
   const telemetry = codexRuns.find((r) => r.phase === phaseKey);
-  const model = telemetry?.model ?? conf?.model;
+  const reportedModel = meaningfulTelemetryValue(telemetry?.model);
+  const snapshotModel = meaningfulTelemetryValue(conf?.model);
+  const model = reportedModel ?? snapshotModel;
   const effort = telemetry?.reasoningEffort ?? conf?.reasoningEffort;
   const profileId = conf?.profile;
   const parts: string[] = [];
@@ -571,6 +573,14 @@ export function stageMetaFor(
   const line = parts.join(' · ');
   const tooltip = profileId ? `Profile: ${profileId}` : undefined;
   return tooltip !== undefined ? { line, tooltip } : { line };
+}
+
+function meaningfulTelemetryValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.toLowerCase() === '(default)' || trimmed.toLowerCase() === 'default') {
+    return undefined;
+  }
+  return trimmed;
 }
 
 function codexPhaseForStage(stageId: string): string | undefined {
@@ -628,10 +638,7 @@ const PRE_IMPLEMENTATION_COMPLETE_PHASES: ReadonlySet<string> = new Set([
  * Only these count for the "controller state has transitioned to verification"
  * condition of the Verification-active rule.
  */
-const VERIFICATION_PHASES: ReadonlySet<string> = new Set([
-  'verification',
-  'verification-failed'
-]);
+const VERIFICATION_PHASES: ReadonlySet<string> = new Set(['verification', 'verification-failed']);
 
 export interface ImplementerRefinementFacts {
   /** True iff an extension-managed Claude terminal is currently alive for the run. */
@@ -672,11 +679,7 @@ export function refineStagesForImplementerRunning(
 ): WorkflowStage[] {
   // Terminal statuses: no refinement — the canonical stages already encode the
   // right story (complete / blocked / cancelled / archived).
-  if (
-    facts.status === 'complete' ||
-    facts.status === 'cancelled' ||
-    facts.status === 'archived'
-  ) {
+  if (facts.status === 'complete' || facts.status === 'cancelled' || facts.status === 'archived') {
     return [...stages];
   }
 

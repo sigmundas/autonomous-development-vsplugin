@@ -31,8 +31,9 @@ even when a run was started outside it.
 - Open any artifact in a normal editor; **compare** original↔accepted spec and
   proposed↔accepted plan in the **native diff editor**; click a finding to jump to
   its source line.
-- **Start Autonomous Run** launches one configured Claude session with bounded
-  autonomous permissions; the selected skill owns controller initialization.
+- **New Run…** guides you through repository, checkout mode, and feature
+  description, then launches one configured Claude session with bounded
+  autonomous permissions. The selected skill still owns controller initialization.
 - **Safe controller actions** (evaluate gates, accept drift, cancel, archive)
   run via argument arrays (never a shell), confirm before mutating, and are
   disabled in untrusted workspaces.
@@ -86,13 +87,12 @@ python3 /path/to/autonomous-development/scripts/controller.py \
   init --feature "Describe the feature here" --mode auto
 ```
 
-…or, once the folder is open in VS Code, run **Start Autonomous Run** from the
-Active Runs view title (the `+` button) or the command palette. The extension
-opens exactly one Claude session with the selected runtime and bounded
-autonomous permission policy. Invoke `autonomous-feature`,
-`autonomous-current`, or `autonomous-main` in that session and provide the
-feature description. The selected skill owns `controller.py init` and stamps
-`run-state.json` as it begins; the extension does not initialize a run itself.
+…or, once the folder is open in VS Code, select **New run…** at the top of Active
+Runs (or from the command palette). Choose isolated feature worktree, current
+branch, or main, then enter the feature description. The extension opens one
+Claude session and submits `autonomous-feature`, `autonomous-current`, or
+`autonomous-main` for the chosen mode. The selected skill owns `controller.py
+init` and stamps `run-state.json`; the extension does not initialize a run itself.
 
 **3. Open the same folder in VS Code** (File → Open Folder → `my-project`). It must
 be the repository the controller ran in — not a parent or subfolder.
@@ -146,13 +146,13 @@ runs continue to execute with the configuration snapshot the controller pinned
 into `run-state.json` at init time, and the dashboard displays that snapshot
 read-only so you can see exactly what the run was created with.
 
-### Start Autonomous Run
+### New Run
 
-**Start Autonomous Run** validates workspace trust, resolves the selected
-Claude runtime, and verifies that its launcher exists and is executable. It
-opens one Claude session in the selected workspace folder with the launcher's
-configured arguments and the shared bounded autonomous permission policy. The
-command fails clearly when:
+**New Run…** asks for a run mode and feature description, validates workspace
+trust, resolves the selected Claude runtime, and verifies that its launcher
+exists and is executable. It opens one Claude session in the selected workspace
+folder with the launcher's configured arguments and the shared bounded
+autonomous permission policy. The command fails clearly when:
 
 - no controller is configured (Set Up Controller is offered),
 - no Claude runtime is selected,
@@ -160,9 +160,9 @@ command fails clearly when:
 - the launcher is not executable.
 
 The launcher owns the Claude provider, deployment/model, and reasoning effort;
-the extension does not edit those directly. After Claude opens, invoke one of
-the autonomous skills shown in the terminal notification. That skill—not the
-extension—initializes and drives the controller run. The older
+the extension does not edit those directly. The extension submits the selected
+autonomous skill as Claude's initial prompt. That skill—not the extension—
+initializes and drives the controller run. The older
 `autonomousDev.openAutonomousClaude` and `autonomousDev.launchClaude` command IDs
 are compatibility aliases for the same Start implementation.
 

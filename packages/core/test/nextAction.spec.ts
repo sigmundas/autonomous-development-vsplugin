@@ -105,8 +105,15 @@ describe('recommendNextAction defensive front-extensions (REFERENCE §7)', () =>
     assert.equal(code(ready({ status: 'complete' })), 'none');
   });
 
-  it('blocked ⇒ blocked guidance', () => {
-    assert.equal(code(ready({ status: 'blocked' })), 'blocked');
+  it('blocked ⇒ linked continuation guidance', () => {
+    assert.equal(code(ready({ status: 'blocked' })), 'continue-blocked');
+  });
+
+  it('active review-budget exhaustion ⇒ explicit +1 authorization', () => {
+    assert.equal(
+      code(ready({ status: 'active', phase: 'review-budget-exhausted' })),
+      'allow-review'
+    );
   });
 
   it('rigorous mode + no enhance artifact ⇒ run-enhance (precedes reconcile-spec)', () => {

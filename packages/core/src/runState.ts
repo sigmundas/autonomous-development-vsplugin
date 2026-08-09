@@ -343,7 +343,8 @@ const FINDING_KNOWN_KEYS = new Set([
   'source_id',
   'resolved_at_round',
   'resolution_source',
-  'legacy_id'
+  'legacy_id',
+  'assessment_state'
 ]);
 
 function normalizeCumulativeFinding(value: unknown): CumulativeFinding {
@@ -376,6 +377,7 @@ function normalizeCumulativeFinding(value: unknown): CumulativeFinding {
     resolvedAtRound?: number;
     resolutionSource?: string;
     legacyId?: string;
+    assessmentState?: string;
     raw: Record<string, unknown>;
   } = { raw: extraRaw };
   const id = asNonEmptyString(value['id']);
@@ -412,6 +414,8 @@ function normalizeCumulativeFinding(value: unknown): CumulativeFinding {
   if (resolutionSource) finding.resolutionSource = resolutionSource;
   const legacyId = asNonEmptyString(value['legacy_id']);
   if (legacyId) finding.legacyId = legacyId;
+  const assessmentState = asNonEmptyString(value['assessment_state']);
+  if (assessmentState) finding.assessmentState = assessmentState;
   return finding;
 }
 
@@ -444,7 +448,13 @@ function normalizeAcceptanceCriterion(value: unknown): CumulativeAcceptanceCrite
   if (!isPlainObject(value)) {
     return { raw: { [MALFORMED_ENTRY_MARKER]: true, value } } as CumulativeAcceptanceCriterion;
   }
-  const criterion: { id?: string; status?: string; evidence?: string; round?: number } = {};
+  const criterion: {
+    id?: string;
+    status?: string;
+    evidence?: string;
+    round?: number;
+    assessmentState?: string;
+  } = {};
   const id = asNonEmptyString(value['id']);
   if (id) criterion.id = id;
   const status = asNonEmptyString(value['status']);
@@ -453,6 +463,8 @@ function normalizeAcceptanceCriterion(value: unknown): CumulativeAcceptanceCrite
   if (evidence !== undefined) criterion.evidence = evidence;
   const round = asInt(value['round']);
   if (round !== undefined) criterion.round = round;
+  const assessmentState = asNonEmptyString(value['assessment_state']);
+  if (assessmentState) criterion.assessmentState = assessmentState;
   return criterion;
 }
 
@@ -672,6 +684,20 @@ export function normalizeRunState(value: unknown): RunStateParseResult {
     maxReviewRounds: clampInt(asNumber(value['max_review_rounds']), 3, 1, 5),
     reviewRound: Math.max(0, Math.trunc(asNumber(value['review_round']) ?? 0)),
     stopGateBlocks: Math.max(0, Math.trunc(asNumber(value['stop_gate_blocks']) ?? 0)),
+    awaitingHumanDecision: value['awaiting_human_decision'] === true,
+    ...(asNonEmptyString(value['awaiting_human_decision_reason'])
+      ? { awaitingHumanDecisionReason: asNonEmptyString(value['awaiting_human_decision_reason']) }
+      : {}),
+    ...(asNonEmptyString(value['parent_run_id'])
+      ? { parentRunId: asNonEmptyString(value['parent_run_id']) }
+      : {}),
+    additionalReviewRounds: Array.isArray(value['review_round_authorizations'])
+      ? value['review_round_authorizations'].reduce<number>((total, item) => {
+          if (!isPlainObject(item)) return total;
+          const amount = asInt(item['additional_rounds']);
+          return total + (amount !== undefined && amount > 0 ? amount : 0);
+        }, 0)
+      : 0,
     artifacts: normalizeArtifacts(value['artifacts']),
     verification: normalizeVerification(value['verification']),
     reviews: normalizeReviewRefs(value['reviews']),

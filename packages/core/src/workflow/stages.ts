@@ -152,6 +152,9 @@ const NEXT_ACTION_STAGE: Readonly<Record<NextActionCode, StageId>> = {
   'triage-findings': 'triage',
   'adversarial-review': 'adversarial-review',
   'evaluate-report': 'completion-evaluation',
+  'allow-review': 'independent-review',
+  'continue-blocked': 'final',
+  'resume-adversarial': 'adversarial-review',
   blocked: 'final',
   none: 'final'
 };

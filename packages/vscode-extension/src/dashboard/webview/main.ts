@@ -152,11 +152,29 @@ function renderHeader(view: DashboardView): HTMLElement {
   if (view.repository.remoteDisplay) repoMeta.push(kv('Remote', view.repository.remoteDisplay));
   if (view.createdAt) repoMeta.push(kv('Created', view.createdAt));
   if (view.updatedAt) repoMeta.push(kv('Updated', view.updatedAt));
+  if (view.recovery.parentRunId) repoMeta.push(kv('Continuation of', view.recovery.parentRunId));
 
-  const canResume = !view.isTerminal;
+  const canResume = !view.isTerminal && !view.recovery.reviewBudgetExhausted;
   const canCancel = view.status === 'active';
   const terminalOpen = view.claudeTerminalOpen;
   const actions = el('div', { class: 'run-actions' }, [
+    view.recovery.reviewBudgetExhausted
+      ? button('Allow one more review', () => command('autonomousDev.authorizeReview'), {
+          class: 'primary',
+          title: 'Explicitly authorize +1 review for this run without changing its snapshotted or global configuration.'
+        })
+      : null,
+    view.status === 'blocked'
+      ? button(
+          view.nextAction.code === 'resume-adversarial'
+            ? 'Resume missing adversarial review'
+            : 'Continue blocked run…',
+          () => command('autonomousDev.continueBlockedRun'), {
+          class: 'primary',
+          title: 'Create a linked follow-up on the same checkout with preserved context and evidence.'
+          }
+        )
+      : null,
     canResume
       ? terminalOpen
         ? button('Focus Claude terminal', () => command('autonomousDev.focusClaudeTerminal'), {
@@ -172,6 +190,9 @@ function renderHeader(view: DashboardView): HTMLElement {
       : null,
     canCancel
       ? button('Cancel run', () => command('autonomousDev.cancelRun'), { class: 'danger' })
+      : null,
+    view.status === 'blocked'
+      ? button('Archive', () => command('autonomousDev.archiveRun'))
       : null
   ]);
 
@@ -180,6 +201,16 @@ function renderHeader(view: DashboardView): HTMLElement {
     badges,
     view.blockingReason
       ? el('p', { class: 'blocking' }, [`Blocked: ${view.blockingReason}`])
+      : null,
+    view.recovery.reviewBudgetExhausted || view.status === 'blocked'
+      ? el('p', { class: 'muted' }, [
+          view.recovery.reviewBudgetExhausted
+            ? 'Progress stopped because the snapshotted review-round budget was exhausted. '
+            : `Progress stopped because the run is blocked${view.blockingReason ? `: ${view.blockingReason}` : ''}. `,
+          `Work ${view.recovery.workPreserved ? 'is' : 'may be'} preserved; verification ${
+            view.recovery.verificationPreserved ? 'is recorded' : 'has not been recorded'
+          }. Required gates remain pending until they are reassessed.`
+        ])
       : null,
     el('div', { class: 'meta' }, repoMeta),
     actions
@@ -299,6 +330,9 @@ function renderStatus(view: DashboardView): HTMLElement {
     kv(
       'Review budget',
       `${view.reviewBudget.consumed}/${view.reviewBudget.max} used (${view.reviewBudget.remaining} left)`
+        + (view.reviewBudget.max > view.reviewBudget.originalMax
+          ? `; original limit ${view.reviewBudget.originalMax}, +${view.reviewBudget.max - view.reviewBudget.originalMax} authorized`
+          : '')
     ),
     kv(
       'Verification',
@@ -370,6 +404,7 @@ function renderCumulativeFinding(f: DashboardCumulativeFinding): HTMLElement {
   if (f.origin) provenance.push(f.origin);
   if (f.resolvedAtRound !== undefined) provenance.push(`resolved r${f.resolvedAtRound}`);
   if (f.resolutionSource) provenance.push(`via ${f.resolutionSource}`);
+  if (f.assessmentState === 'needs_reassessment') provenance.push('needs reassessment');
   const body: Child[] = [];
   if (f.description) body.push(el('p', { class: 'finding-desc' }, [f.description]));
   if (provenance.length)
@@ -405,7 +440,9 @@ function renderAcceptanceCriteria(view: DashboardView): HTMLElement | null {
       el('td', {}, [c.id ?? '—']),
       el('td', {}, [
         el('span', { class: `ac-status ac-${(c.status ?? 'unknown').toLowerCase()}` }, [
-          c.status ?? 'unknown'
+          c.assessmentState === 'needs_reassessment'
+            ? `${c.status ?? 'unknown'} (needs reassessment)`
+            : c.status ?? 'unknown'
         ])
       ]),
       el('td', {}, [c.blocking ? 'blocking' : 'satisfied']),

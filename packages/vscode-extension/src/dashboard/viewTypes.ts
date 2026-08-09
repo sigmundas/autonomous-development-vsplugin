@@ -97,6 +97,7 @@ export interface DashboardCumulativeFinding {
   readonly resolvedAtRound?: number;
   /** `review-NN` that resolved it, when applicable. */
   readonly resolutionSource?: string;
+  readonly assessmentState?: string;
 }
 
 export interface DashboardCumulativeFindings {
@@ -113,6 +114,7 @@ export interface DashboardCumulativeAcceptanceCriterion {
   readonly status?: string;
   readonly evidence?: string;
   readonly round?: number;
+  readonly assessmentState?: string;
   /** True when status is not exactly `satisfied` (blocks completion, fail closed). */
   readonly blocking: boolean;
 }
@@ -236,9 +238,17 @@ export interface DashboardView {
   readonly updatedAt?: string;
   readonly stages: readonly DashboardStage[];
   readonly reviewBudget: {
+    readonly originalMax: number;
     readonly max: number;
     readonly consumed: number;
     readonly remaining: number;
+  };
+  readonly recovery: {
+    readonly reviewBudgetExhausted: boolean;
+    readonly awaitingHumanDecision: boolean;
+    readonly workPreserved: boolean;
+    readonly verificationPreserved: boolean;
+    readonly parentRunId?: string;
   };
   readonly verification: {
     readonly hasChecks: boolean;

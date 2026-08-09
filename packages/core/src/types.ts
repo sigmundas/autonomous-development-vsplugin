@@ -139,6 +139,7 @@ export interface CumulativeFinding {
   readonly resolvedAtRound?: number;
   /** `review-NN`, set on delta resolution. */
   readonly resolutionSource?: string;
+  readonly assessmentState?: string;
   /** Original synthetic id preserved during migration. */
   readonly legacyId?: string;
   /** Verbatim sub-fields for forward compatibility. */
@@ -156,6 +157,7 @@ export interface CumulativeAcceptanceCriterion {
   readonly status?: string;
   readonly evidence?: string;
   readonly round?: number;
+  readonly assessmentState?: string;
 }
 
 /**
@@ -212,6 +214,10 @@ export interface RunState {
   readonly maxReviewRounds: number;
   readonly reviewRound: number;
   readonly stopGateBlocks: number;
+  readonly awaitingHumanDecision?: boolean;
+  readonly awaitingHumanDecisionReason?: string;
+  readonly parentRunId?: string;
+  readonly additionalReviewRounds?: number;
   readonly artifacts: ArtifactMap;
   readonly verification: VerificationState;
   readonly reviews: readonly ReviewRef[];

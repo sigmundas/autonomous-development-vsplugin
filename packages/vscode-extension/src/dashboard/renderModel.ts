@@ -225,7 +225,8 @@ function cumulativeFindingsView(
       ...(f.origin !== undefined ? { origin: f.origin } : {}),
       blocking: blockingSet.has(f),
       ...(f.resolvedAtRound !== undefined ? { resolvedAtRound: f.resolvedAtRound } : {}),
-      ...(f.resolutionSource !== undefined ? { resolutionSource: f.resolutionSource } : {})
+      ...(f.resolutionSource !== undefined ? { resolutionSource: f.resolutionSource } : {}),
+      ...(f.assessmentState !== undefined ? { assessmentState: f.assessmentState } : {})
     }))
   };
 }
@@ -245,6 +246,7 @@ function acceptanceCriteriaView(
       ...(c.status !== undefined ? { status: c.status } : {}),
       ...(c.evidence !== undefined ? { evidence: c.evidence } : {}),
       ...(c.round !== undefined ? { round: c.round } : {}),
+      ...(c.assessmentState !== undefined ? { assessmentState: c.assessmentState } : {}),
       blocking: blockingSet.has(c)
     }))
   };
@@ -300,7 +302,13 @@ export function toDashboardView(
       claudeTerminalOpen,
       repository: { id: run.repoId },
       stages: [],
-      reviewBudget: { max: 0, consumed: 0, remaining: 0 },
+      reviewBudget: { originalMax: 0, max: 0, consumed: 0, remaining: 0 },
+      recovery: {
+        reviewBudgetExhausted: false,
+        awaitingHumanDecision: false,
+        workPreserved: false,
+        verificationPreserved: false
+      },
       verification: {
         hasChecks: false,
         passed: false,
@@ -437,6 +445,16 @@ export function toDashboardView(
       };
     }),
     reviewBudget: model.reviewBudget,
+    recovery: {
+      reviewBudgetExhausted: state.phase === 'review-budget-exhausted',
+      awaitingHumanDecision: state.awaitingHumanDecision === true,
+      workPreserved:
+        state.status === 'blocked' ||
+        state.phase === 'review-budget-exhausted' ||
+        state.parentRunId !== undefined,
+      verificationPreserved: model.verification.hasChecks,
+      ...(state.parentRunId !== undefined ? { parentRunId: state.parentRunId } : {})
+    },
     verification: {
       hasChecks: model.verification.hasChecks,
       passed: model.verification.passed,

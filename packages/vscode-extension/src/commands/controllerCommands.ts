@@ -133,3 +133,51 @@ export async function archiveRun(run: DiscoveredRun, deps: ControllerCommandDeps
     reportError(err);
   }
 }
+
+export async function authorizeReview(
+  run: DiscoveredRun,
+  deps: ControllerCommandDeps
+): Promise<void> {
+  if (!(await ensureConfigured(deps.service))) return;
+  const confirm = await vscode.window.showWarningMessage(
+    `Allow one additional confirmation review for ${run.runId}? This applies only to this run and is recorded in its history.`,
+    { modal: true },
+    'Allow One More Review'
+  );
+  if (confirm !== 'Allow One More Review') return;
+  try {
+    await runWithProgress(`Authorizing one review for ${run.runId}…`, () =>
+      deps.service.executeForRun('authorize-review', run)
+    );
+    deps.refresh();
+    void vscode.window.showInformationMessage(
+      `One additional review was authorized for ${run.runId}; the global configuration was unchanged.`
+    );
+  } catch (err) {
+    reportError(err);
+  }
+}
+
+export async function continueBlockedRun(
+  run: DiscoveredRun,
+  deps: ControllerCommandDeps
+): Promise<void> {
+  if (!(await ensureConfigured(deps.service))) return;
+  const confirm = await vscode.window.showWarningMessage(
+    `Create a linked continuation of blocked run ${run.runId}? Preserved artifacts, verification, findings, and acceptance evidence will be carried forward.`,
+    { modal: true },
+    'Continue Blocked Run'
+  );
+  if (confirm !== 'Continue Blocked Run') return;
+  try {
+    await runWithProgress(`Creating continuation for ${run.runId}…`, () =>
+      deps.service.executeForRun('continue-run', run)
+    );
+    deps.refresh();
+    void vscode.window.showInformationMessage(
+      `Created a linked continuation of ${run.runId}. Review-derived evidence is marked for reassessment.`
+    );
+  } catch (err) {
+    reportError(err);
+  }
+}

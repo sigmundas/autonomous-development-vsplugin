@@ -180,6 +180,16 @@
         "category": "Autonomous Development"
       },
       {
+        "command": "autonomousDev.authorizeReview",
+        "title": "Allow One More Review",
+        "category": "Autonomous Development"
+      },
+      {
+        "command": "autonomousDev.continueBlockedRun",
+        "title": "Continue Blocked Run…",
+        "category": "Autonomous Development"
+      },
+      {
         "command": "autonomousDev.revealRunDirectory",
         "title": "Reveal Run Directory",
         "category": "Autonomous Development"

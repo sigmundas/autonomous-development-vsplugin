@@ -54,6 +54,20 @@ describe('cumulativeUnresolvedSevere (controller.py parity, ~1135-1153)', () => 
     assert.deepEqual(cumulativeUnresolvedSevere(state), []);
   });
 
+  it('a stale resolved critical finding needs reassessment and blocks', () => {
+    const state = stateWith({
+      cumulative_findings: [
+        {
+          id: 'F-1',
+          severity: 'critical',
+          status: 'resolved',
+          assessment_state: 'needs_reassessment'
+        }
+      ]
+    });
+    assert.equal(cumulativeUnresolvedSevere(state).length, 1);
+  });
+
   it('a non-blocking triage status (rejected_with_evidence) does NOT block', () => {
     const state = stateWith({
       cumulative_findings: [{ id: 'F-1', severity: 'critical', status: 'rejected_with_evidence' }]
@@ -147,6 +161,15 @@ describe('blockingAcceptanceCriteria (controller.py parity, ~1163-1172)', () => 
       cumulative_acceptance_criteria: [{ id: 'AC-1', status: 'satisfied' }]
     });
     assert.deepEqual(blockingAcceptanceCriteria(state), []);
+  });
+
+  it('a stale satisfied criterion needs reassessment and blocks', () => {
+    const state = stateWith({
+      cumulative_acceptance_criteria: [
+        { id: 'AC-1', status: 'satisfied', assessment_state: 'needs_reassessment' }
+      ]
+    });
+    assert.equal(blockingAcceptanceCriteria(state).length, 1);
   });
 
   it('a missing status blocks (fail closed)', () => {

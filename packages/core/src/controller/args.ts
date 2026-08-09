@@ -15,6 +15,8 @@ export type ControllerSubcommand =
   | 'status'
   | 'evaluate'
   | 'accept-drift'
+  | 'authorize-review'
+  | 'continue-run'
   | 'cancel'
   | 'archive-run'
   | 'config-show'
@@ -39,6 +41,8 @@ const MUTATING: ReadonlySet<ControllerSubcommand> = new Set([
   'init',
   'evaluate',
   'accept-drift',
+  'authorize-review',
+  'continue-run',
   'cancel',
   'archive-run',
   'config-set-active-preset',
@@ -52,6 +56,8 @@ const RUN_SCOPED: ReadonlySet<ControllerSubcommand> = new Set([
   'status',
   'evaluate',
   'accept-drift',
+  'authorize-review',
+  'continue-run',
   'cancel',
   'archive-run'
 ]);

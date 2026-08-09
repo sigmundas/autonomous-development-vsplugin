@@ -87,6 +87,15 @@ describe('buildControllerCommand (REFERENCE §10 adapter contract)', () => {
     assert.equal(isMutatingSubcommand('show-run'), false);
   });
 
+  it('scopes recovery mutations to the selected run', () => {
+    for (const sub of ['authorize-review', 'continue-run'] as const) {
+      const cmd = buildControllerCommand(ctx, sub, { runId: 'R-parent' });
+      assert.equal(cmd.mutating, true);
+      assert.deepEqual(cmd.args.slice(-3), ['--run-id', 'R-parent', sub]);
+      assert.throws(() => buildControllerCommand(ctx, sub), /requires an explicit runId/);
+    }
+  });
+
   it('init builds --feature and is mutating, run-id-free', () => {
     const cmd = buildControllerCommand(ctx, 'init', { feature: 'Add CSV export' });
     assert.equal(cmd.mutating, true);

@@ -56,7 +56,11 @@ export function isSevereCumulativeFinding(finding: CumulativeFinding): boolean {
  */
 export function isFindingReleased(finding: CumulativeFinding): boolean {
   const status = finding.status;
-  return status !== undefined && NON_BLOCKING_TRIAGE_STATUSES.includes(status);
+  return (
+    finding.assessmentState !== 'needs_reassessment' &&
+    status !== undefined &&
+    NON_BLOCKING_TRIAGE_STATUSES.includes(status)
+  );
 }
 
 /** Convenience: whether a cumulative finding is resolved/released from blocking. */
@@ -97,7 +101,10 @@ export function blockingAcceptanceCriteria(state: RunState): CumulativeAcceptanc
       blocking.push(criterion);
       continue;
     }
-    if (criterion.status !== SATISFIED_ACCEPTANCE_STATUS) {
+    if (
+      criterion.status !== SATISFIED_ACCEPTANCE_STATUS ||
+      criterion.assessmentState === 'needs_reassessment'
+    ) {
       blocking.push(criterion);
     }
   }

@@ -278,6 +278,14 @@ export function registerCommands(deps: CommandDeps): void {
     'autonomousDev.archiveRun',
     runScoped((run) => controller.archiveRun(run, controllerDeps))
   );
+  register(
+    'autonomousDev.authorizeReview',
+    runScoped((run) => controller.authorizeReview(run, controllerDeps))
+  );
+  register(
+    'autonomousDev.continueBlockedRun',
+    runScoped((run) => controller.continueBlockedRun(run, controllerDeps))
+  );
 
   register('autonomousDev.setupController', () =>
     runGuidedSetup({

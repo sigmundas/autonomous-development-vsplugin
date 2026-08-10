@@ -102,6 +102,13 @@ describe('isKnownShellBinary', () => {
 });
 
 describe('buildTerminalOptions — Python auto-activation defenses', () => {
+  it('opts out of Python activation injection before the terminal is revealed', () => {
+    const run = makeRun();
+    const plan = planResumeInClaude(run, [RUNTIME], undefined, '', '/work/wt');
+    const options = buildTerminalOptions(plan);
+    assert.equal(options.hideFromUser, true);
+  });
+
   it('stamps deterministic env markers on every terminal', () => {
     const run = makeRun();
     const plan = planResumeInClaude(run, [RUNTIME], undefined, '', '/work/wt');

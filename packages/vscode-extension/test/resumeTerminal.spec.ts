@@ -75,6 +75,9 @@ describe('buildTerminalOptions — direct launcher process (no shell interpositi
     ]);
     // cwd is the run worktree.
     assert.equal(options.cwd, '/work/wt');
+    // Python's terminal-open hook skips terminals created with hideFromUser.
+    // terminal.show() may reveal it afterward without changing creationOptions.
+    assert.equal(options.hideFromUser, true);
     // Terminal name includes the run id so multiple runs stay distinguishable.
     assert.match(String(options.name), /20260806T091439Z-cafefacefade/);
   });

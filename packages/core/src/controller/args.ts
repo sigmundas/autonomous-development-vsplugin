@@ -70,9 +70,8 @@ const RUN_SCOPED: ReadonlySet<ControllerSubcommand> = new Set([
 ]);
 
 /**
- * Config subcommands read/write the on-disk config file and do not touch
- * run-state.json. They still accept --project-root so the controller can resolve
- * relative paths, but the argument is not run-scoped.
+ * Config subcommands read/write global files and do not require repository
+ * identity or a project root.
  */
 const CONFIG_SUBCOMMANDS: ReadonlySet<ControllerSubcommand> = new Set([
   'config-show',
@@ -98,8 +97,8 @@ export interface ControllerContext {
   readonly pythonPath: string;
   /** Absolute path to scripts/controller.py. */
   readonly controllerPath: string;
-  /** Absolute project root (always passed as --project-root). */
-  readonly projectRoot: string;
+  /** Absolute repository root. Required for non-config subcommands. */
+  readonly projectRoot?: string;
   /** Optional explicit state home (--state-dir). */
   readonly stateHome?: string;
 }
@@ -166,6 +165,9 @@ export function buildControllerCommand(
   sub: ControllerSubcommand,
   options: ControllerOptions = {}
 ): ControllerCommandLine {
+  if (!CONFIG_SUBCOMMANDS.has(sub) && (!ctx.projectRoot || ctx.projectRoot.length === 0)) {
+    throw new Error(`Controller subcommand "${sub}" requires an explicit projectRoot`);
+  }
   if (RUN_SCOPED.has(sub) && (!options.runId || options.runId.length === 0)) {
     throw new Error(`Controller subcommand "${sub}" requires an explicit runId`);
   }
@@ -187,7 +189,10 @@ export function buildControllerCommand(
     }
   }
 
-  const args: string[] = [ctx.controllerPath, '--project-root', ctx.projectRoot];
+  const args: string[] = [ctx.controllerPath];
+  if (!CONFIG_SUBCOMMANDS.has(sub) && ctx.projectRoot) {
+    args.push('--project-root', ctx.projectRoot);
+  }
   if (ctx.stateHome && ctx.stateHome.length > 0) {
     args.push('--state-dir', ctx.stateHome);
   }

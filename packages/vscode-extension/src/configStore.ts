@@ -38,7 +38,6 @@ export class ConfigStore implements vscode.Disposable {
 
   constructor(
     private readonly client: ConfigClient,
-    private readonly getProjectRoot: () => string | undefined,
     private readonly log: OutputLog
   ) {}
 
@@ -65,20 +64,10 @@ export class ConfigStore implements vscode.Disposable {
       this.emit(next);
       return next;
     }
-    const projectRoot = this.getProjectRoot();
-    if (!projectRoot) {
-      const next: ConfigSnapshot = {
-        controllerAvailable: true,
-        loadedAt: new Date().toISOString(),
-        error: 'Open a folder (a git repository) to load the autonomous-development configuration.'
-      };
-      this.emit(next);
-      return next;
-    }
     if (this.refreshInFlight) {
       return this.refreshInFlight;
     }
-    const promise = this.doRefresh(projectRoot);
+    const promise = this.doRefresh();
     this.refreshInFlight = promise;
     try {
       return await promise;
@@ -87,7 +76,7 @@ export class ConfigStore implements vscode.Disposable {
     }
   }
 
-  private async doRefresh(projectRoot: string): Promise<ConfigSnapshot> {
+  private async doRefresh(): Promise<ConfigSnapshot> {
     const partial: {
       controllerAvailable: true;
       loadedAt: string;
@@ -105,15 +94,19 @@ export class ConfigStore implements vscode.Disposable {
 
     const [showRes, presetsRes, profilesRes, runtimesRes, validationRes] = await Promise.allSettled(
       [
-        this.client.show(projectRoot),
-        this.client.listPresets(projectRoot),
-        this.client.listProfiles(projectRoot),
-        this.client.listClaudeRuntimes(projectRoot),
-        this.client.validate(projectRoot)
+        this.client.show(),
+        this.client.listPresets(),
+        this.client.listProfiles(),
+        this.client.listClaudeRuntimes(),
+        this.client.validate()
       ]
     );
 
-    const record = <T>(res: PromiseSettledResult<T>, label: string, apply: (value: T) => void): void => {
+    const record = <T>(
+      res: PromiseSettledResult<T>,
+      label: string,
+      apply: (value: T) => void
+    ): void => {
       if (res.status === 'fulfilled') {
         apply(res.value);
       } else {
@@ -152,7 +145,9 @@ export class ConfigStore implements vscode.Disposable {
 }
 
 /** Convenience: derive a friendly profile label from controller metadata. */
-export function friendlyProfileLabel(profile: Pick<CodexProfile, 'label' | 'provider' | 'model' | 'id'>): string {
+export function friendlyProfileLabel(
+  profile: Pick<CodexProfile, 'label' | 'provider' | 'model' | 'id'>
+): string {
   if (profile.label && profile.label.trim().length > 0) {
     return profile.label.trim();
   }

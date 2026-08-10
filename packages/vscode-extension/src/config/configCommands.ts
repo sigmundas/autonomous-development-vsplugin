@@ -24,16 +24,11 @@ export interface ConfigCommandDeps {
   readonly store: ConfigStore;
   readonly client: ConfigClient;
   readonly log: OutputLog;
-  readonly getProjectRoot: () => string | undefined;
 }
 
 function reportError(action: string, err: unknown): void {
   const message =
-    err instanceof ControllerError
-      ? err.message
-      : err instanceof Error
-        ? err.message
-        : String(err);
+    err instanceof ControllerError ? err.message : err instanceof Error ? err.message : String(err);
   void vscode.window.showErrorMessage(`${action}: ${message}`);
 }
 
@@ -54,10 +49,6 @@ async function ensureReady(deps: ConfigCommandDeps): Promise<boolean> {
     );
     return false;
   }
-  if (!deps.getProjectRoot()) {
-    void vscode.window.showErrorMessage('Open a folder to change autonomous-development configuration.');
-    return false;
-  }
   return true;
 }
 
@@ -73,13 +64,7 @@ export async function openConfigPanel(deps: ConfigCommandDeps): Promise<void> {
     }
     return;
   }
-  ConfigPanel.show(
-    deps.context.extensionUri,
-    deps.store,
-    deps.client,
-    deps.getProjectRoot,
-    deps.log
-  );
+  ConfigPanel.show(deps.context.extensionUri, deps.store, deps.client, deps.log);
 }
 
 async function pickPreset(
@@ -107,14 +92,13 @@ async function pickPreset(
 
 export async function selectPreset(deps: ConfigCommandDeps): Promise<void> {
   if (!(await ensureReady(deps))) return;
-  const projectRoot = deps.getProjectRoot() as string;
   try {
     const snap = await deps.store.refresh();
     const list = snap.presets;
     if (!list) return;
     const picked = await pickPreset(list.presets, list.activePreset);
     if (!picked) return;
-    await deps.client.setActivePreset(projectRoot, picked);
+    await deps.client.setActivePreset(picked);
     await deps.store.refresh();
     void vscode.window.showInformationMessage(
       `Active preset set to "${picked}". Changes apply to new runs; existing runs continue using their configuration snapshot.`
@@ -170,12 +154,8 @@ function effortQuickPickItems(current?: ControllerReasoningEffort): (vscode.Quic
   return items;
 }
 
-async function configurePhase(
-  deps: ConfigCommandDeps,
-  phase: ControllerPhase
-): Promise<void> {
+async function configurePhase(deps: ConfigCommandDeps, phase: ControllerPhase): Promise<void> {
   if (!(await ensureReady(deps))) return;
-  const projectRoot = deps.getProjectRoot() as string;
   try {
     const snap = await deps.store.refresh();
     const effective = snap.effective;
@@ -210,7 +190,7 @@ async function configurePhase(
     );
     if (!effortPick) return;
 
-    await deps.client.setPhase(projectRoot, {
+    await deps.client.setPhase({
       preset: activePreset,
       phase,
       profile: profilePick.profile ?? '',
@@ -240,12 +220,11 @@ function runtimeQuickPickItems(
 ): (vscode.QuickPickItem & { name: string })[] {
   return runtimes.map((rt) => {
     const label = friendlyRuntimeLabel(rt);
-    const trouble =
-      !rt.launcherExists
-        ? 'launcher missing'
-        : !rt.launcherExecutable
-          ? 'launcher not executable'
-          : '';
+    const trouble = !rt.launcherExists
+      ? 'launcher missing'
+      : !rt.launcherExecutable
+        ? 'launcher not executable'
+        : '';
     return {
       label: trouble.length > 0 ? `$(warning) ${label}` : label,
       description: rt.name,
@@ -259,7 +238,6 @@ function runtimeQuickPickItems(
 
 export async function configureClaudeRuntime(deps: ConfigCommandDeps): Promise<void> {
   if (!(await ensureReady(deps))) return;
-  const projectRoot = deps.getProjectRoot() as string;
   try {
     const snap = await deps.store.refresh();
     const runtimes = snap.runtimes?.claudeRuntimes ?? [];
@@ -283,7 +261,7 @@ export async function configureClaudeRuntime(deps: ConfigCommandDeps): Promise<v
       }
     );
     if (!picked) return;
-    await deps.client.setClaudeRuntime(projectRoot, picked.name);
+    await deps.client.setClaudeRuntime(picked.name);
     await deps.store.refresh();
     void vscode.window.showInformationMessage(
       `Claude runtime set to "${picked.name}". This applies when launching a new session; it does not change the provider of an already-running Claude Code session.`
@@ -334,8 +312,11 @@ export async function validateConfiguration(deps: ConfigCommandDeps): Promise<vo
       return;
     }
     if (validation.valid) {
-      const warn = validation.warnings.length > 0 ? ` (${validation.warnings.length} warning(s))` : '';
-      void vscode.window.showInformationMessage(`Autonomous-development configuration is valid${warn}.`);
+      const warn =
+        validation.warnings.length > 0 ? ` (${validation.warnings.length} warning(s))` : '';
+      void vscode.window.showInformationMessage(
+        `Autonomous-development configuration is valid${warn}.`
+      );
     } else {
       void vscode.window.showErrorMessage(
         validation.error ?? 'Autonomous-development configuration is invalid.'
@@ -366,23 +347,23 @@ export function buildPreflightSummary(
 ): PreflightSummary {
   if (!effective) return { phaseSummaries: [] };
   const wf = effective.effective.workflow;
-  const phaseSummaries = CONTROLLER_PHASES.filter((p) => p !== 'enhance' || effective.effective.codex[p]).map(
-    (phase) => {
-      const conf = effective.effective.codex[phase];
-      const profile = profiles?.find((prof) => prof.id === conf?.profile);
-      return {
-        phase,
-        title: phaseTitle(phase),
-        profileLabel: profile
-          ? friendlyProfileLabel(profile)
-          : (conf?.profile ?? 'default'),
-        effortLabel: conf?.reasoningEffort ? reasoningEffortLabel(conf.reasoningEffort) : '—'
-      };
-    }
-  );
+  const phaseSummaries = CONTROLLER_PHASES.filter(
+    (p) => p !== 'enhance' || effective.effective.codex[p]
+  ).map((phase) => {
+    const conf = effective.effective.codex[phase];
+    const profile = profiles?.find((prof) => prof.id === conf?.profile);
+    return {
+      phase,
+      title: phaseTitle(phase),
+      profileLabel: profile ? friendlyProfileLabel(profile) : (conf?.profile ?? 'default'),
+      effortLabel: conf?.reasoningEffort ? reasoningEffortLabel(conf.reasoningEffort) : '—'
+    };
+  });
   return {
     ...(effective.activePreset ? { activePreset: effective.activePreset } : {}),
-    ...(effective.effective.claudeRuntime ? { claudeRuntime: effective.effective.claudeRuntime } : {}),
+    ...(effective.effective.claudeRuntime
+      ? { claudeRuntime: effective.effective.claudeRuntime }
+      : {}),
     ...(wf.workflowMode ? { workflowMode: wf.workflowMode } : {}),
     ...(wf.maxReviewRounds !== undefined ? { maxReviewRounds: wf.maxReviewRounds } : {}),
     phaseSummaries

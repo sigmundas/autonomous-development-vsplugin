@@ -2,8 +2,7 @@
  * Resolve the reference repo-id for an open workspace folder by replicating the
  * controller's `resolve_repository` (docs/REFERENCE.md §2, scripts/state.py).
  * Used to scope run discovery to the current repository (FR-3). Returns
- * `undefined` whenever git is unavailable or the folder is not a git repo — the
- * caller then enumerates all repositories.
+ * `undefined` whenever git is unavailable or the folder is not a git repo.
  *
  * Git is invoked with an argv array via execFileSync (never a shell string), and
  * each call mirrors the reference's tolerant `_run_git`: a failed command yields

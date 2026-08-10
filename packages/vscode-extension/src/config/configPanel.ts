@@ -101,7 +101,7 @@ function getNonce(): string {
   return text;
 }
 
-function toView(snap: ConfigSnapshot): ConfigView {
+export function toView(snap: ConfigSnapshot): ConfigView {
   const effective = snap.effective;
   const activePreset = effective?.activePreset ?? snap.presets?.activePreset;
   const runtimeName = effective?.effective.claudeRuntime;
@@ -222,7 +222,6 @@ export class ConfigPanel {
     private readonly extensionUri: vscode.Uri,
     private readonly store: ConfigStore,
     private readonly client: ConfigClient,
-    private readonly getProjectRoot: () => string | undefined,
     private readonly log: OutputLog
   ) {
     this.panel.webview.html = this.html();
@@ -239,7 +238,6 @@ export class ConfigPanel {
     extensionUri: vscode.Uri,
     store: ConfigStore,
     client: ConfigClient,
-    getProjectRoot: () => string | undefined,
     log: OutputLog
   ): void {
     const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
@@ -258,7 +256,7 @@ export class ConfigPanel {
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'dist', 'configWebview')]
       }
     );
-    ConfigPanel.current = new ConfigPanel(panel, extensionUri, store, client, getProjectRoot, log);
+    ConfigPanel.current = new ConfigPanel(panel, extensionUri, store, client, log);
     ConfigPanel.current.render();
     void store.refresh();
   }
@@ -344,25 +342,13 @@ export class ConfigPanel {
     }
   }
 
-  private requireProjectRoot(): string | undefined {
-    const root = this.getProjectRoot();
-    if (!root) {
-      void vscode.window.showErrorMessage(
-        'Open a folder to change autonomous-development configuration.'
-      );
-    }
-    return root;
-  }
-
   private async setPreset(name: string): Promise<void> {
     if (!isWorkspaceTrusted()) {
       void vscode.window.showErrorMessage('Configuration mutations require a trusted workspace.');
       return;
     }
-    const root = this.requireProjectRoot();
-    if (!root) return;
     try {
-      await this.client.setActivePreset(root, name);
+      await this.client.setActivePreset(name);
       await this.store.refresh();
       this.render();
     } catch (err) {
@@ -375,10 +361,8 @@ export class ConfigPanel {
       void vscode.window.showErrorMessage('Configuration mutations require a trusted workspace.');
       return;
     }
-    const root = this.requireProjectRoot();
-    if (!root) return;
     try {
-      await this.client.setClaudeRuntime(root, name);
+      await this.client.setClaudeRuntime(name);
       await this.store.refresh();
       this.render();
       void vscode.window.showInformationMessage(
@@ -399,14 +383,12 @@ export class ConfigPanel {
       void vscode.window.showErrorMessage('Configuration mutations require a trusted workspace.');
       return;
     }
-    const root = this.requireProjectRoot();
-    if (!root) return;
     if (msg.preset.length === 0) {
       void vscode.window.showErrorMessage('Select an active preset before configuring phases.');
       return;
     }
     try {
-      await this.client.setPhase(root, {
+      await this.client.setPhase({
         preset: msg.preset,
         phase: msg.phase,
         ...(msg.profile !== undefined ? { profile: msg.profile } : {}),

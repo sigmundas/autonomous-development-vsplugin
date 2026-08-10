@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 
-import { friendlyProfileLabel, reasoningEffortLabel } from '../src/configStore';
+import { ConfigStore, friendlyProfileLabel, reasoningEffortLabel } from '../src/configStore';
+import { toView } from '../src/config/configPanel';
+import type { ConfigClient } from '../src/controller/configClient';
+import type { OutputLog } from '../src/output';
+import { discoverRunsForRepositories } from '../src/runStore';
+import { buildFixtures } from './fixtures';
 
 describe('friendlyProfileLabel', () => {
   it('prefers the controller-provided label when present', () => {
@@ -38,5 +43,100 @@ describe('reasoningEffortLabel', () => {
 
   it('returns the input verbatim for unknown values (forward compatible)', () => {
     assert.equal(reasoningEffortLabel('turbo'), 'turbo');
+  });
+});
+
+describe('global configuration outside a repository', () => {
+  it('loads all configuration surfaces without a workspace project root', async () => {
+    const calls: string[] = [];
+    const client = {
+      isConfigured: () => true,
+      show: async () => {
+        calls.push('show');
+        return {
+          configPath: '/state/config.toml',
+          configExists: true,
+          activePreset: 'global',
+          effective: {
+            workflow: { workflowMode: 'standard', maxReviewRounds: 3 },
+            claudeRuntime: 'local',
+            codex: {}
+          },
+          origin: {},
+          warnings: [],
+          presets: ['global'],
+          claudeRuntimes: ['local']
+        };
+      },
+      listPresets: async () => {
+        calls.push('presets');
+        return {
+          configPath: '/state/config.toml',
+          activePreset: 'global',
+          presets: [{ name: 'global', phases: [] }]
+        };
+      },
+      listProfiles: async () => {
+        calls.push('profiles');
+        return {
+          codexHome: '/codex',
+          profiles: [{ id: 'azure', valid: true }]
+        };
+      },
+      listClaudeRuntimes: async () => {
+        calls.push('runtimes');
+        return {
+          configPath: '/state/config.toml',
+          claudeRuntimes: [
+            {
+              name: 'local',
+              launcher: '/bin/sh',
+              args: [],
+              launcherExists: true,
+              launcherExecutable: true
+            }
+          ]
+        };
+      },
+      validate: async () => {
+        calls.push('validate');
+        return {
+          configPath: '/state/config.toml',
+          configExists: true,
+          valid: true,
+          warnings: []
+        };
+      }
+    } as unknown as ConfigClient;
+    const log = { warn: () => undefined } as unknown as OutputLog;
+    const store = new ConfigStore(client, log);
+
+    const snapshot = await store.refresh();
+    const view = toView(snapshot);
+
+    assert.deepEqual(calls.sort(), ['presets', 'profiles', 'runtimes', 'show', 'validate']);
+    assert.equal(view.activePreset, 'global');
+    assert.equal(view.presets[0]?.name, 'global');
+    assert.equal(view.profiles[0]?.id, 'azure');
+    assert.equal(view.claudeRuntimes[0]?.name, 'local');
+    store.dispose();
+  });
+});
+
+describe('repository-scoped run discovery', () => {
+  it('shows no unrelated runs when no repository resolves or a different repository is open', () => {
+    const fixtures = buildFixtures();
+    try {
+      assert.deepEqual(discoverRunsForRepositories(fixtures.stateHome, new Set()), []);
+      assert.deepEqual(
+        discoverRunsForRepositories(fixtures.stateHome, new Set(['repository-b'])),
+        []
+      );
+      assert.ok(
+        discoverRunsForRepositories(fixtures.stateHome, new Set([fixtures.repoId])).length > 0
+      );
+    } finally {
+      fixtures.cleanup();
+    }
   });
 });

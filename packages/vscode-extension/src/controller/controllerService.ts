@@ -61,13 +61,13 @@ export class ControllerService {
     );
   }
 
-  private contextFor(projectRoot: string): ControllerContext {
+  private contextFor(projectRoot?: string): ControllerContext {
     const config = this.getConfig();
     const stateHome = this.getStateHome();
     return {
       pythonPath: config.pythonPath,
       controllerPath: config.controllerPath,
-      projectRoot,
+      ...(projectRoot !== undefined ? { projectRoot } : {}),
       ...(stateHome.length > 0 ? { stateHome } : {})
     };
   }
@@ -130,6 +130,14 @@ export class ControllerService {
     options: ControllerOptions = {}
   ): Promise<ControllerResult> {
     return this.executeWith(this.contextFor(projectRoot), sub, options);
+  }
+
+  /** Execute a global configuration command without repository identity. */
+  async executeGlobal(
+    sub: ControllerSubcommand,
+    options: ControllerOptions = {}
+  ): Promise<ControllerResult> {
+    return this.executeWith(this.contextFor(), sub, options);
   }
 
   /** Convenience: run a subcommand scoped to a discovered run. */

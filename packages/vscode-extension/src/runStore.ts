@@ -11,6 +11,13 @@ import type { OutputLog } from './output';
 import { resolveActiveStateHome } from './stateHomeContext';
 import { resolveWorkspaceRepoId } from './workspaceRepoId';
 
+export function discoverRunsForRepositories(
+  stateHome: string,
+  repoIds: ReadonlySet<string>
+): DiscoveredRun[] {
+  return [...repoIds].flatMap((id) => discoverRuns(stateHome, id));
+}
+
 /** Stable identity for a run across repositories (runId alone may collide). */
 export function runKey(run: { repoId: string; runId: string }): string {
   return `${run.repoId}::${run.runId}`;
@@ -61,7 +68,7 @@ export class RunStore implements vscode.Disposable {
 
   /**
    * Resolve the repo-ids of the open workspace folders (FR-3). An empty set means
-   * git is unavailable or no folder is a repo, so discovery enumerates everything.
+   * no repository-scoped runs may be shown.
    */
   private workspaceRepoIds(): Set<string> {
     const ids = new Set<string>();
@@ -82,17 +89,14 @@ export class RunStore implements vscode.Disposable {
   }
 
   /**
-   * Re-discover runs under the state home, scoped to the open workspace's repo-id
-   * when git resolves one (else all repositories), plus any legacy in-repo run.
+   * Re-discover runs under the state home, scoped to open workspace repositories,
+   * plus any legacy in-repo run.
    */
   refresh(): void {
     let discovered: DiscoveredRun[] = [];
     try {
       const repoIds = this.workspaceRepoIds();
-      discovered =
-        repoIds.size === 0
-          ? discoverRuns(this.stateHome)
-          : [...repoIds].flatMap((id) => discoverRuns(this.stateHome, id));
+      discovered = discoverRunsForRepositories(this.stateHome, repoIds);
     } catch (err) {
       this.log.error(`Run discovery failed: ${err instanceof Error ? err.message : String(err)}`);
       discovered = [];

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 
 import * as vscode from 'vscode';
@@ -7,6 +7,7 @@ import { detectLegacyRun, type DiscoveredRun } from '@semanticmatter/core';
 
 import type { AutonomousDevApi } from '../src/extension';
 import { openFileAtLine } from '../src/dashboard/openLocation';
+import { resolveWorkspaceRepoId } from '../src/workspaceRepoId';
 import { buildFixtures, type Fixtures } from './fixtures';
 
 const EXT_ID = 'semanticmatter.semanticmatter-autonomous-development';
@@ -56,7 +57,22 @@ function run(runId: string): DiscoveredRun {
 
 before(async function () {
   this.timeout(60000);
-  fixtures = buildFixtures();
+  const extensionRoot = path.resolve(__dirname, '../..');
+  const existingFolderCount = vscode.workspace.workspaceFolders?.length ?? 0;
+  vscode.workspace.updateWorkspaceFolders(0, existingFolderCount, {
+    uri: vscode.Uri.file(extensionRoot),
+    name: 'autonomous-development-vsplugin'
+  });
+  const built = buildFixtures();
+  const workspaceRepoId = resolveWorkspaceRepoId(extensionRoot);
+  assert.ok(workspaceRepoId, 'integration test workspace must resolve as a Git repository');
+  const repositories = path.join(built.stateHome, 'repositories');
+  renameSync(path.join(repositories, built.repoId), path.join(repositories, workspaceRepoId));
+  fixtures = {
+    ...built,
+    repoId: workspaceRepoId,
+    runDir: (runId: string) => path.join(repositories, workspaceRepoId, 'runs', runId)
+  };
 
   // Point the extension at the fixture state home through the real setting, then
   // activate — this also exercises the setting > env > default precedence.

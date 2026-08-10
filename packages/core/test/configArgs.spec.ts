@@ -19,8 +19,6 @@ describe('buildControllerCommand — config subcommands', () => {
     assert.equal(mutating, false);
     assert.deepEqual(args, [
       '/opt/autodev/scripts/controller.py',
-      '--project-root',
-      '/work/repo',
       '--state-dir',
       '/state',
       'config-show',
@@ -28,6 +26,20 @@ describe('buildControllerCommand — config subcommands', () => {
     ]);
     assert.equal(isConfigSubcommand('config-show'), true);
     assert.equal(isMutatingSubcommand('config-show'), false);
+  });
+
+  it('builds global config commands without repository identity', () => {
+    const globalCtx: ControllerContext = {
+      pythonPath: 'python3',
+      controllerPath: '/opt/autodev/scripts/controller.py',
+      stateHome: '/state'
+    };
+    const { args } = buildControllerCommand(globalCtx, 'config-show');
+    assert.ok(!args.includes('--project-root'));
+    assert.throws(
+      () => buildControllerCommand(globalCtx, 'list-runs'),
+      /requires an explicit projectRoot/
+    );
   });
 
   it('config-list-profiles / -presets / -claude-runtimes all pass --json', () => {
@@ -48,10 +60,7 @@ describe('buildControllerCommand — config subcommands', () => {
   });
 
   it('config-set-active-preset requires a name and is mutating', () => {
-    assert.throws(
-      () => buildControllerCommand(ctx, 'config-set-active-preset'),
-      /requires a name/
-    );
+    assert.throws(() => buildControllerCommand(ctx, 'config-set-active-preset'), /requires a name/);
     const { args, mutating } = buildControllerCommand(ctx, 'config-set-active-preset', {
       name: 'azure-autonomous'
     });

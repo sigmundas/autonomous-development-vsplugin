@@ -115,6 +115,28 @@ provider-specific secrets remain in that Claude setup, outside Autonomous
 Development's config file. Changing the selected runtime affects new sessions
 only.
 
+Autonomous sessions use Claude's non-interactive `dontAsk` mode with a bounded
+development-command profile. Read-only Git commands, Python, `uv`, `pytest`, and
+Codex are included. Add repository-specific command prefixes and executable
+search directories to the selected runtime without granting arbitrary Bash:
+
+```toml
+[claude_runtimes.anthropic]
+display_name = "Anthropic · Claude"
+launcher = "/Users/yourname/bin/claude-anthropic-autonomous"
+allowed_commands = ["ruff", "npm run test"]
+executable_paths = ["/opt/homebrew/bin", "~/.local/bin"]
+```
+
+Each `allowed_commands` entry must be a simple executable or subcommand prefix;
+shell operators, shell launchers, and destructive or unbounded Git commands are
+rejected. Run compound checks as separate tool calls. `executable_paths` is
+prepended to the inherited PATH for both Claude and controller verification, so
+`run-check -- uv --version` resolves the same tool without a login-shell wrapper.
+The absolute Claude launcher directory is also prepended automatically; a
+launcher at `/opt/homebrew/bin/claude` therefore exposes sibling Homebrew tools
+without additional configuration.
+
 ## What is a Claude model?
 
 A Claude model is the model requested for a Claude session, independently of

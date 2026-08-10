@@ -83,6 +83,8 @@ export interface ClaudeRuntime {
   readonly displayName?: string;
   readonly launcher?: string;
   readonly args: readonly string[];
+  readonly allowedCommands?: readonly string[];
+  readonly executablePaths?: readonly string[];
   readonly launcherExists: boolean;
   readonly launcherExecutable: boolean;
 }
@@ -378,6 +380,8 @@ export function parseClaudeRuntimeList(raw: unknown): ControllerConfigResponse<C
         : {}),
       ...(asString(entry['launcher']) ? { launcher: asString(entry['launcher']) as string } : {}),
       args: asStringArray(entry['args']),
+      allowedCommands: asStringArray(entry['allowed_commands']),
+      executablePaths: asStringArray(entry['executable_paths']),
       launcherExists: asBool(entry['launcher_exists']),
       launcherExecutable: asBool(entry['launcher_executable'])
     });

@@ -13,6 +13,7 @@ import type { OutputLog } from '../output';
 import { isWorkspaceTrusted } from '../trust';
 import {
   buildLauncherArgs,
+  runtimeExecutablePathEnv,
   withAutonomousClaudePermissions,
   withClaudeModel
 } from './claudeLauncher';
@@ -197,7 +198,10 @@ export function planResumeInClaude(
   const bootstrapPrompt = autonomousResumeBootstrapPrompt(run.runId);
   const model = snapshotFor(run)?.claudeModel;
   const launcherArgv: string[] = runtime
-    ? withAutonomousClaudePermissions(withClaudeModel(buildLauncherArgs(runtime), model))
+    ? withAutonomousClaudePermissions(
+        withClaudeModel(buildLauncherArgs(runtime), model),
+        runtime.allowedCommands ?? []
+      )
     : [];
   if (pluginDir && runtime) {
     launcherArgv.push('--plugin-dir', pluginDir);
@@ -341,7 +345,8 @@ export function buildTerminalOptions(plan: ResumeInClaudePlan): vscode.TerminalO
   }
   const env: Record<string, string> = {
     [CLAUDE_TERMINAL_ENV_MARKER]: '1',
-    [CLAUDE_TERMINAL_RUN_ENV]: plan.run.runId
+    [CLAUDE_TERMINAL_RUN_ENV]: plan.run.runId,
+    ...(plan.runtime ? runtimeExecutablePathEnv(plan.runtime) : {})
   };
   return {
     name: claudeTerminalNameFor(terminalIdentityForRun(plan.run)),

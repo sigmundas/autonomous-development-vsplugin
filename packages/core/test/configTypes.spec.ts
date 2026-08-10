@@ -154,6 +154,8 @@ describe('parseClaudeRuntimeList', () => {
           display_name: 'Azure · Claude',
           launcher: '/usr/local/bin/claude-azure',
           args: ['--flag'],
+          allowed_commands: ['ruff'],
+          executable_paths: ['/opt/homebrew/bin'],
           launcher_exists: true,
           launcher_executable: true
         },
@@ -172,6 +174,8 @@ describe('parseClaudeRuntimeList', () => {
       assert.equal(first?.launcherExists, true);
       assert.equal(first?.launcherExecutable, true);
       assert.deepEqual(first?.args, ['--flag']);
+      assert.deepEqual(first?.allowedCommands, ['ruff']);
+      assert.deepEqual(first?.executablePaths, ['/opt/homebrew/bin']);
       assert.equal(second?.launcherExists, false);
       assert.equal(second?.launcherExecutable, false);
     }

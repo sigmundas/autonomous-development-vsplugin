@@ -8,6 +8,7 @@ import type { OutputLog } from '../output';
 import { isWorkspaceTrusted } from '../trust';
 import {
   buildLauncherArgs,
+  runtimeExecutablePathEnv,
   withAutonomousClaudePermissions,
   withClaudeModel
 } from './claudeLauncher';
@@ -78,7 +79,8 @@ export function planOpenAutonomousClaude(
 ): OpenAutonomousClaudePlan {
   const pluginDir = pluginDirFromControllerPath(controllerPath);
   const launcherArgv = withAutonomousClaudePermissions(
-    withClaudeModel(buildLauncherArgs(runtime), model)
+    withClaudeModel(buildLauncherArgs(runtime), model),
+    runtime.allowedCommands ?? []
   );
   if (pluginDir) {
     launcherArgv.push('--plugin-dir', pluginDir);
@@ -110,7 +112,8 @@ export function buildOpenAutonomousClaudeTerminalOptions(
     );
   }
   const env: Record<string, string> = {
-    [AUTONOMOUS_CLAUDE_TERMINAL_ENV_MARKER]: '1'
+    [AUTONOMOUS_CLAUDE_TERMINAL_ENV_MARKER]: '1',
+    ...runtimeExecutablePathEnv(plan.runtime)
   };
   return {
     name: plan.terminalName,

@@ -5,7 +5,7 @@ import type { ExtensionConfig } from '../config';
 import { ControllerService } from '../controller/controllerService';
 import { DashboardPanel } from '../dashboard/dashboardPanel';
 import type { OutputLog } from '../output';
-import type { RunStore } from '../runStore';
+import { runKey, type RunStore } from '../runStore';
 import { runGuidedSetup } from '../setup';
 import type { DetailNode, RunNode } from '../tree/runTreeItem';
 import * as artifacts from './openArtifacts';
@@ -176,6 +176,29 @@ export function registerCommands(deps: CommandDeps): void {
     getConfig: deps.getConfig,
     refresh: deps.refresh
   };
+  const recoveryDeps: controller.RecoveryCommandDeps = {
+    ...controllerDeps,
+    getRun: (repoId, runId) => store.getByKey(runKey({ repoId, runId })),
+    surfaceRun: (run) => {
+      store.select(run);
+      DashboardPanel.show(
+        context.extensionUri,
+        store,
+        deps.getConfig,
+        log,
+        run,
+        deps.terminalRegistry
+      );
+    },
+    resumeRun: async (run) => {
+      await resumeRunInClaude(run, {
+        store: deps.configStore,
+        log,
+        registry: deps.terminalRegistry,
+        getControllerPath: () => deps.getConfig().controllerPath
+      });
+    }
+  };
 
   /** Wrap a run-scoped artifact handler with target resolution + error reporting. */
   const runScoped =
@@ -280,11 +303,11 @@ export function registerCommands(deps: CommandDeps): void {
   );
   register(
     'autonomousDev.authorizeReview',
-    runScoped((run) => controller.authorizeReview(run, controllerDeps))
+    runScoped((run) => controller.authorizeReview(run, recoveryDeps))
   );
   register(
     'autonomousDev.continueBlockedRun',
-    runScoped((run) => controller.continueBlockedRun(run, controllerDeps))
+    runScoped((run) => controller.continueBlockedRun(run, recoveryDeps))
   );
 
   register('autonomousDev.setupController', () =>

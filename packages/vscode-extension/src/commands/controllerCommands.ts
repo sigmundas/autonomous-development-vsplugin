@@ -10,6 +10,17 @@ export interface ControllerCommandDeps {
   readonly refresh: () => void;
 }
 
+export type RecoveryIntent =
+  | 'allow-one-more-review'
+  | 'resume-adversarial'
+  | 'continue-blocked';
+
+export interface RecoveryCommandDeps extends ControllerCommandDeps {
+  readonly getRun: (repoId: string, runId: string) => DiscoveredRun | undefined;
+  readonly surfaceRun: (run: DiscoveredRun) => void;
+  readonly resumeRun: (run: DiscoveredRun) => Promise<void>;
+}
+
 async function ensureConfigured(service: ControllerService): Promise<boolean> {
   if (service.isConfigured()) {
     return true;
@@ -28,6 +39,83 @@ function reportError(err: unknown): void {
   const message =
     err instanceof ControllerError ? err.message : err instanceof Error ? err.message : String(err);
   void vscode.window.showErrorMessage(message);
+}
+
+function parseContinuationRunId(stdout: string): string {
+  const line = stdout
+    .trim()
+    .split('\n')
+    .filter((item) => item.trim().length > 0)
+    .at(-1);
+  if (!line) throw new ControllerError('continue-run returned no continuation identity.');
+  try {
+    const parsed = JSON.parse(line) as { run_id?: unknown };
+    if (typeof parsed.run_id === 'string' && parsed.run_id.length > 0) return parsed.run_id;
+  } catch {
+    // Fall through to the stable controller-contract error below.
+  }
+  throw new ControllerError('continue-run returned an invalid continuation identity.');
+}
+
+async function refreshResolveSurfaceAndResume(
+  source: DiscoveredRun,
+  runId: string,
+  deps: RecoveryCommandDeps
+): Promise<DiscoveredRun> {
+  deps.refresh();
+  const continuation = deps.getRun(source.repoId, runId);
+  if (!continuation) {
+    throw new ControllerError(
+      `Continuation ${runId} was created but was not found after run discovery refreshed.`
+    );
+  }
+  deps.surfaceRun(continuation);
+  await deps.resumeRun(continuation);
+  return continuation;
+}
+
+export async function recoverBlockedRun(
+  parent: DiscoveredRun,
+  intent: RecoveryIntent,
+  deps: RecoveryCommandDeps
+): Promise<{ continuation: DiscoveredRun; reused: boolean }> {
+  const result = await runWithProgress(`Preparing continuation for ${parent.runId}…`, () =>
+    deps.service.executeForRun('continue-run', parent, { recoveryIntent: intent })
+  );
+  const runId = parseContinuationRunId(result.stdout);
+  let payload: { reused?: unknown } = {};
+  try {
+    payload = JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '{}') as {
+      reused?: unknown;
+    };
+  } catch {
+    // The run id was already validated; reuse metadata is only informational.
+  }
+  deps.refresh();
+  let continuation = deps.getRun(parent.repoId, runId);
+  if (!continuation) {
+    throw new ControllerError(
+      `Continuation ${runId} was created but was not found after run discovery refreshed.`
+    );
+  }
+  if (intent === 'allow-one-more-review') {
+    const authorizationTarget = continuation;
+    await runWithProgress(`Authorizing one review for ${authorizationTarget.runId}…`, () =>
+      deps.service.executeForRun('authorize-review', authorizationTarget)
+    );
+  }
+  continuation = await refreshResolveSurfaceAndResume(parent, runId, deps);
+  return { continuation, reused: payload.reused === true };
+}
+
+export async function authorizeRecoverableRun(
+  run: DiscoveredRun,
+  deps: RecoveryCommandDeps
+): Promise<DiscoveredRun> {
+  await runWithProgress(`Authorizing one review for ${run.runId}…`, () =>
+    deps.service.executeForRun('authorize-review', run)
+  );
+  return refreshResolveSurfaceAndResume(run, run.runId, deps);
 }
 
 async function runWithProgress<T>(title: string, task: () => Promise<T>): Promise<T> {
@@ -136,22 +224,42 @@ export async function archiveRun(run: DiscoveredRun, deps: ControllerCommandDeps
 
 export async function authorizeReview(
   run: DiscoveredRun,
-  deps: ControllerCommandDeps
+  deps: RecoveryCommandDeps
 ): Promise<void> {
   if (!(await ensureConfigured(deps.service))) return;
+  if (
+    run.state?.status === 'cancelled' ||
+    run.state?.status === 'complete' ||
+    run.state?.status === 'archived'
+  ) {
+    void vscode.window.showErrorMessage(
+      `Run ${run.runId} is ${run.state.status} and cannot be authorized or continued.`
+    );
+    return;
+  }
   const confirm = await vscode.window.showWarningMessage(
-    `Allow one additional confirmation review for ${run.runId}? This applies only to this run and is recorded in its history.`,
+    run.state?.status === 'blocked'
+      ? `Create or reuse a linked continuation of terminal run ${run.runId}, authorize one additional review on that continuation, and resume it in Claude? The parent remains immutable.`
+      : `Allow one additional confirmation review for ${run.runId} and resume it in Claude? This applies only to this run and is recorded in its history.`,
     { modal: true },
     'Allow One More Review'
   );
   if (confirm !== 'Allow One More Review') return;
   try {
-    await runWithProgress(`Authorizing one review for ${run.runId}…`, () =>
-      deps.service.executeForRun('authorize-review', run)
-    );
-    deps.refresh();
+    if (run.state?.status === 'blocked') {
+      const { continuation, reused } = await recoverBlockedRun(
+        run,
+        'allow-one-more-review',
+        deps
+      );
+      void vscode.window.showInformationMessage(
+        `${reused ? 'Reused' : 'Created'} continuation ${continuation.runId}, authorized one additional review there, and resumed it in Claude.`
+      );
+      return;
+    }
+    await authorizeRecoverableRun(run, deps);
     void vscode.window.showInformationMessage(
-      `One additional review was authorized for ${run.runId}; the global configuration was unchanged.`
+      `One additional review was authorized for ${run.runId}; the global configuration was unchanged and Claude was resumed.`
     );
   } catch (err) {
     reportError(err);
@@ -160,22 +268,23 @@ export async function authorizeReview(
 
 export async function continueBlockedRun(
   run: DiscoveredRun,
-  deps: ControllerCommandDeps
+  deps: RecoveryCommandDeps
 ): Promise<void> {
   if (!(await ensureConfigured(deps.service))) return;
   const confirm = await vscode.window.showWarningMessage(
-    `Create a linked continuation of blocked run ${run.runId}? Preserved artifacts, verification, findings, and acceptance evidence will be carried forward.`,
+    `Create or reuse a linked continuation of blocked run ${run.runId} and resume it in Claude? Preserved artifacts, verification, findings, and acceptance evidence will be carried forward.`,
     { modal: true },
     'Continue Blocked Run'
   );
   if (confirm !== 'Continue Blocked Run') return;
   try {
-    await runWithProgress(`Creating continuation for ${run.runId}…`, () =>
-      deps.service.executeForRun('continue-run', run)
-    );
-    deps.refresh();
+    const intent: RecoveryIntent =
+      run.model?.recommendedNextAction.code === 'resume-adversarial'
+        ? 'resume-adversarial'
+        : 'continue-blocked';
+    const { continuation, reused } = await recoverBlockedRun(run, intent, deps);
     void vscode.window.showInformationMessage(
-      `Created a linked continuation of ${run.runId}. Review-derived evidence is marked for reassessment.`
+      `${reused ? 'Reused' : 'Created'} continuation ${continuation.runId} and resumed it in Claude. Review-derived evidence is preserved and stale evidence remains marked for reassessment.`
     );
   } catch (err) {
     reportError(err);

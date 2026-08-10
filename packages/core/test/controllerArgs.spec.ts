@@ -96,6 +96,20 @@ describe('buildControllerCommand (REFERENCE §10 adapter contract)', () => {
     }
   });
 
+  it('carries the selected recovery intent into continue-run', () => {
+    const cmd = buildControllerCommand(ctx, 'continue-run', {
+      runId: 'R-parent',
+      recoveryIntent: 'resume-adversarial'
+    });
+    assert.deepEqual(cmd.args.slice(-5), [
+      '--run-id',
+      'R-parent',
+      'continue-run',
+      '--intent',
+      'resume-adversarial'
+    ]);
+  });
+
   it('init builds --feature and is mutating, run-id-free', () => {
     const cmd = buildControllerCommand(ctx, 'init', { feature: 'Add CSV export' });
     assert.equal(cmd.mutating, true);

@@ -270,6 +270,8 @@ function codexUsageView(model: CodexUsageModel): DashboardCodexUsage {
 export interface ToDashboardViewOptions {
   /** True when the extension is currently tracking a Claude terminal for this run. */
   readonly claudeTerminalOpen?: boolean;
+  /** Child run linked to this parent, derived from discovery without parent mutation. */
+  readonly continuedByRunId?: string;
 }
 
 /** Build the dashboard view for a run. Returns a diagnostics-only shell when unparsed. */
@@ -307,7 +309,10 @@ export function toDashboardView(
         reviewBudgetExhausted: false,
         awaitingHumanDecision: false,
         workPreserved: false,
-        verificationPreserved: false
+        verificationPreserved: false,
+        ...(options.continuedByRunId !== undefined
+          ? { continuedByRunId: options.continuedByRunId }
+          : {})
       },
       verification: {
         hasChecks: false,
@@ -453,7 +458,10 @@ export function toDashboardView(
         state.phase === 'review-budget-exhausted' ||
         state.parentRunId !== undefined,
       verificationPreserved: model.verification.hasChecks,
-      ...(state.parentRunId !== undefined ? { parentRunId: state.parentRunId } : {})
+      ...(state.parentRunId !== undefined ? { parentRunId: state.parentRunId } : {}),
+      ...(options.continuedByRunId !== undefined
+        ? { continuedByRunId: options.continuedByRunId }
+        : {})
     },
     verification: {
       hasChecks: model.verification.hasChecks,

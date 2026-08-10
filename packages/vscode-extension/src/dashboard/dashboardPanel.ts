@@ -127,10 +127,15 @@ export class DashboardPanel {
     }
     const key = this.currentRunKey;
     const eventLog = loadEventLog(run.runDir, { maxEntries: this.getConfig().maxEventLogEntries });
+    const continuation = this.store.allRuns.find(
+      (candidate) =>
+        candidate.repoId === run.repoId && candidate.state?.parentRunId === run.runId
+    );
     const view = reconcileTimeline(
       key ? this.lastViewByKey.get(key) : undefined,
       toDashboardView(run, eventLog, {
-        claudeTerminalOpen: this.terminalRegistry.has(terminalIdentityForRun(run))
+        claudeTerminalOpen: this.terminalRegistry.has(terminalIdentityForRun(run)),
+        ...(continuation ? { continuedByRunId: continuation.runId } : {})
       })
     );
     if (key) {

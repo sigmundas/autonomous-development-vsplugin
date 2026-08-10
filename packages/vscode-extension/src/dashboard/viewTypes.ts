@@ -249,6 +249,7 @@ export interface DashboardView {
     readonly workPreserved: boolean;
     readonly verificationPreserved: boolean;
     readonly parentRunId?: string;
+    readonly continuedByRunId?: string;
   };
   readonly verification: {
     readonly hasChecks: boolean;

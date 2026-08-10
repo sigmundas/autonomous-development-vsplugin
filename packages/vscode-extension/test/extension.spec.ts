@@ -27,6 +27,8 @@ const CONTRIBUTED_COMMANDS = [
   'acceptDrift',
   'cancelRun',
   'archiveRun',
+  'authorizeReview',
+  'continueBlockedRun',
   'revealRunDirectory',
   'setupController',
   'configure',

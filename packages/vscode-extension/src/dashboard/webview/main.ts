@@ -153,22 +153,36 @@ function renderHeader(view: DashboardView): HTMLElement {
   if (view.createdAt) repoMeta.push(kv('Created', view.createdAt));
   if (view.updatedAt) repoMeta.push(kv('Updated', view.updatedAt));
   if (view.recovery.parentRunId) repoMeta.push(kv('Continuation of', view.recovery.parentRunId));
+  if (view.recovery.continuedByRunId) {
+    repoMeta.push(kv('Continued by run', view.recovery.continuedByRunId));
+  }
 
   const canResume = !view.isTerminal && !view.recovery.reviewBudgetExhausted;
   const canCancel = view.status === 'active';
   const terminalOpen = view.claudeTerminalOpen;
   const actions = el('div', { class: 'run-actions' }, [
-    view.recovery.reviewBudgetExhausted
-      ? button('Allow one more review', () => command('autonomousDev.authorizeReview'), {
+    view.recovery.reviewBudgetExhausted &&
+    (view.status === 'active' || view.status === 'blocked')
+      ? button(
+          view.recovery.continuedByRunId
+            ? `Resume review continuation ${view.recovery.continuedByRunId}`
+            : 'Allow one more review',
+          () => command('autonomousDev.authorizeReview'), {
           class: 'primary',
-          title: 'Explicitly authorize +1 review for this run without changing its snapshotted or global configuration.'
-        })
+          title:
+            view.status === 'blocked'
+              ? 'Create or reuse a linked continuation, authorize +1 review there, and resume it without mutating the terminal parent.'
+              : 'Explicitly authorize +1 review for this run and resume it without changing its snapshotted or global configuration.'
+          }
+        )
       : null,
     view.status === 'blocked'
       ? button(
           view.nextAction.code === 'resume-adversarial'
             ? 'Resume missing adversarial review'
-            : 'Continue blocked run…',
+            : view.recovery.continuedByRunId
+              ? `Resume continuation ${view.recovery.continuedByRunId}`
+              : 'Continue blocked run…',
           () => command('autonomousDev.continueBlockedRun'), {
           class: 'primary',
           title: 'Create a linked follow-up on the same checkout with preserved context and evidence.'

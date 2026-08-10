@@ -30,6 +30,7 @@ export interface DiscoveredRepository {
 export function groupForStatus(status: RunStatus): RunGroup {
   switch (status) {
     case 'complete':
+    case 'complete_with_followups':
     case 'blocked':
     case 'cancelled':
       return 'completed';

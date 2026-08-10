@@ -119,6 +119,7 @@ describe('discovery and grouping', () => {
       'verificationFailed',
       'changesRequired',
       'adversarialRequired',
+      'awaitingDecision',
       'malformed'
     ]) {
       assert.ok(active.includes(id), `active group missing: ${id}`);
@@ -127,7 +128,7 @@ describe('discovery and grouping', () => {
 
   it('places terminal completed/blocked/cancelled runs in the completed group', () => {
     const completed = api.getRunsForGroup('completed').map((r) => r.runId);
-    for (const id of ['complete', 'blocked', 'cancelled']) {
+    for (const id of ['complete', 'completeWithFollowups', 'blocked', 'cancelled']) {
       assert.ok(completed.includes(id), `completed group missing: ${id}`);
     }
   });
@@ -180,6 +181,27 @@ describe('per-scenario workflow model (single shared evaluator)', () => {
     assert.equal(model?.status, 'complete');
     assert.equal(model?.gatesPass, true);
     assert.equal(model?.recommendedNextAction.code, 'none');
+  });
+
+  it('complete_with_followups → successful terminal with deferred adversarial history', () => {
+    const model = run('completeWithFollowups').model;
+    assert.equal(model?.status, 'complete_with_followups');
+    assert.equal(model?.isTerminal, true);
+    assert.equal(model?.gatesPass, true);
+    assert.equal(model?.recommendedNextAction.code, 'none');
+    assert.equal(model?.completionEvaluation?.followUpCount, 3);
+    assert.equal(model?.adversarial.latestRound, 8);
+    assert.equal(model?.adversarial.latestVerdict, 'changes_required');
+  });
+
+  it('awaiting adversarial human decision keeps the workflow cursor on adversarial', () => {
+    const model = run('awaitingDecision').model;
+    assert.equal(model?.recommendedNextAction.code, 'await-human-decision');
+    assert.equal(model?.stages.find((stage) => stage.id === 'triage')?.status, 'complete');
+    assert.equal(
+      model?.stages.find((stage) => stage.id === 'adversarial-review')?.status,
+      'active'
+    );
   });
 
   it('blocked → blockingReason + continuation action', () => {

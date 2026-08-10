@@ -110,6 +110,25 @@ describe('buildControllerCommand (REFERENCE §10 adapter contract)', () => {
     ]);
   });
 
+  it('starts a semantically new run from selected follow-up ids', () => {
+    const cmd = buildControllerCommand(ctx, 'start-followup-run', {
+      runId: 'R-parent',
+      followUpIds: ['FU-001', 'FU-003']
+    });
+    assert.equal(cmd.mutating, true);
+    assert.deepEqual(cmd.args.slice(-5), [
+      'start-followup-run',
+      '--follow-up-id',
+      'FU-001',
+      '--follow-up-id',
+      'FU-003'
+    ]);
+    assert.throws(
+      () => buildControllerCommand(ctx, 'start-followup-run', { runId: 'R-parent' }),
+      /requires followUpIds/
+    );
+  });
+
   it('init builds --feature and is mutating, run-id-free', () => {
     const cmd = buildControllerCommand(ctx, 'init', { feature: 'Add CSV export' });
     assert.equal(cmd.mutating, true);

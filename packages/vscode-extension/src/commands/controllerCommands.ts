@@ -1,5 +1,11 @@
 import * as vscode from 'vscode';
-import type { DiscoveredRun } from '@semanticmatter/core';
+import { readFileSync } from 'node:fs';
+import {
+  CONVENTIONAL_ARTIFACT_NAMES,
+  parseFollowUpsText,
+  resolveArtifactPath,
+  type DiscoveredRun
+} from '@semanticmatter/core';
 
 import type { ExtensionConfig } from '../config';
 import { ControllerError, type ControllerService } from '../controller/controllerService';
@@ -10,10 +16,7 @@ export interface ControllerCommandDeps {
   readonly refresh: () => void;
 }
 
-export type RecoveryIntent =
-  | 'allow-one-more-review'
-  | 'resume-adversarial'
-  | 'continue-blocked';
+export type RecoveryIntent = 'allow-one-more-review' | 'resume-adversarial' | 'continue-blocked';
 
 export interface RecoveryCommandDeps extends ControllerCommandDeps {
   readonly getRun: (repoId: string, runId: string) => DiscoveredRun | undefined;
@@ -47,14 +50,14 @@ function parseContinuationRunId(stdout: string): string {
     .split('\n')
     .filter((item) => item.trim().length > 0)
     .at(-1);
-  if (!line) throw new ControllerError('continue-run returned no continuation identity.');
+  if (!line) throw new ControllerError('Controller returned no new-run identity.');
   try {
     const parsed = JSON.parse(line) as { run_id?: unknown };
     if (typeof parsed.run_id === 'string' && parsed.run_id.length > 0) return parsed.run_id;
   } catch {
     // Fall through to the stable controller-contract error below.
   }
-  throw new ControllerError('continue-run returned an invalid continuation identity.');
+  throw new ControllerError('Controller returned an invalid new-run identity.');
 }
 
 async function refreshResolveSurfaceAndResume(
@@ -230,6 +233,7 @@ export async function authorizeReview(
   if (
     run.state?.status === 'cancelled' ||
     run.state?.status === 'complete' ||
+    run.state?.status === 'complete_with_followups' ||
     run.state?.status === 'archived'
   ) {
     void vscode.window.showErrorMessage(
@@ -247,11 +251,7 @@ export async function authorizeReview(
   if (confirm !== 'Allow One More Review') return;
   try {
     if (run.state?.status === 'blocked') {
-      const { continuation, reused } = await recoverBlockedRun(
-        run,
-        'allow-one-more-review',
-        deps
-      );
+      const { continuation, reused } = await recoverBlockedRun(run, 'allow-one-more-review', deps);
       void vscode.window.showInformationMessage(
         `${reused ? 'Reused' : 'Created'} continuation ${continuation.runId}, authorized one additional review there, and resumed it in Claude.`
       );
@@ -285,6 +285,65 @@ export async function continueBlockedRun(
     const { continuation, reused } = await recoverBlockedRun(run, intent, deps);
     void vscode.window.showInformationMessage(
       `${reused ? 'Reused' : 'Created'} continuation ${continuation.runId} and resumed it in Claude. Review-derived evidence is preserved and stale evidence remains marked for reassessment.`
+    );
+  } catch (err) {
+    reportError(err);
+  }
+}
+
+export async function startFollowupRun(
+  run: DiscoveredRun,
+  deps: RecoveryCommandDeps
+): Promise<void> {
+  if (!(await ensureConfigured(deps.service))) return;
+  const reference = run.state?.artifacts.followUpsJson ?? CONVENTIONAL_ARTIFACT_NAMES.followUpsJson;
+  const path = resolveArtifactPath(run.runDir, reference).path;
+  if (!path) {
+    void vscode.window.showWarningMessage('No safe follow-ups.json artifact is available.');
+    return;
+  }
+  let followUps;
+  try {
+    followUps = parseFollowUpsText(readFileSync(path, 'utf8')).followUps;
+  } catch {
+    followUps = [];
+  }
+  if (followUps.length === 0) {
+    void vscode.window.showInformationMessage(`Run ${run.runId} has no deferred follow-ups.`);
+    return;
+  }
+  const picked = await vscode.window.showQuickPick(
+    followUps.map((item) => ({
+      label: item.id,
+      description: item.title,
+      detail: item.whyDeferred,
+      id: item.id
+    })),
+    {
+      title: `Start follow-up run from ${run.runId}`,
+      placeHolder: 'Select one or more deferred findings',
+      canPickMany: true,
+      ignoreFocusOut: true
+    }
+  );
+  if (!picked || picked.length === 0) return;
+  try {
+    const result = await runWithProgress(`Starting follow-up run for ${run.runId}…`, () =>
+      deps.service.executeForRun('start-followup-run', run, {
+        followUpIds: picked.map((item) => item.id)
+      })
+    );
+    const runId = parseContinuationRunId(result.stdout);
+    deps.refresh();
+    const child = deps.getRun(run.repoId, runId);
+    if (!child) {
+      throw new ControllerError(
+        `Follow-up run ${runId} was created but was not found after discovery refreshed.`
+      );
+    }
+    deps.surfaceRun(child);
+    void vscode.window.showInformationMessage(
+      `Started follow-up run ${runId} from ${picked.length} selected item(s).`
     );
   } catch (err) {
     reportError(err);

@@ -16,6 +16,7 @@ import {
   discoverTriageFiles,
   findingDispositionsFromEvents,
   parseReviewText,
+  parseFollowUpsText,
   parseRunConfigSnapshot,
   resolveArtifactPath,
   summarizeCodexArtifact,
@@ -28,6 +29,7 @@ import {
   type DiscoveredRun,
   type FindingDisposition,
   type LoadedEventLog,
+  type FollowUpItem,
   type ReviewRef,
   type RunConfigSnapshot,
   type WorkflowStage
@@ -128,6 +130,16 @@ function artifact(
     filename,
     ...(sections.length > 0 ? { sections } : {})
   };
+}
+
+function readFollowUps(runDir: string, ref: string | undefined): readonly FollowUpItem[] {
+  const resolved = existsArtifact(runDir, ref, CONVENTIONAL_ARTIFACT_NAMES.followUpsJson);
+  if (!resolved.exists) return [];
+  try {
+    return parseFollowUpsText(readFileSync(resolved.path, 'utf8')).followUps;
+  } catch {
+    return [];
+  }
 }
 
 function reviewRound(
@@ -314,6 +326,8 @@ export function toDashboardView(
           ? { continuedByRunId: options.continuedByRunId }
           : {})
       },
+      completion: { followUpCount: 0 },
+      followUps: [],
       verification: {
         hasChecks: false,
         passed: false,
@@ -390,6 +404,18 @@ export function toDashboardView(
       CONVENTIONAL_ARTIFACT_NAMES.acceptedPlan
     )
   ];
+  const followUps = readFollowUps(runDir, state.artifacts.followUpsJson);
+  if (followUps.length > 0 || state.artifacts.followUpsMarkdown || state.artifacts.followUpsJson) {
+    artifacts.push(
+      artifact(
+        'autonomousDev.openFollowUps',
+        'Deferred follow-ups',
+        runDir,
+        state.artifacts.followUpsMarkdown,
+        CONVENTIONAL_ARTIFACT_NAMES.followUpsMarkdown
+      )
+    );
+  }
 
   const checks = model.verification.latest.map((c) => ({
     name: c.name,
@@ -451,18 +477,42 @@ export function toDashboardView(
     }),
     reviewBudget: model.reviewBudget,
     recovery: {
-      reviewBudgetExhausted: state.phase === 'review-budget-exhausted',
+      reviewBudgetExhausted: state.reviewBudgetExhausted === true,
       awaitingHumanDecision: state.awaitingHumanDecision === true,
       workPreserved:
         state.status === 'blocked' ||
-        state.phase === 'review-budget-exhausted' ||
+        state.reviewBudgetExhausted ||
         state.parentRunId !== undefined,
       verificationPreserved: model.verification.hasChecks,
       ...(state.parentRunId !== undefined ? { parentRunId: state.parentRunId } : {}),
       ...(options.continuedByRunId !== undefined
         ? { continuedByRunId: options.continuedByRunId }
+        : {}),
+      ...(state.awaitingHumanDecisionReason !== undefined
+        ? { humanDecisionReason: state.awaitingHumanDecisionReason }
+        : {}),
+      ...(state.awaitingHumanDecisionPhase !== undefined
+        ? { humanDecisionPhase: state.awaitingHumanDecisionPhase }
         : {})
     },
+    completion: {
+      ...(model.completionEvaluation?.result !== undefined
+        ? { result: model.completionEvaluation.result }
+        : {}),
+      ...(model.completionEvaluation?.summary !== undefined
+        ? { summary: model.completionEvaluation.summary }
+        : {}),
+      followUpCount: followUps.length || model.completionEvaluation?.followUpCount || 0
+    },
+    followUps: followUps.map((item) => ({
+      id: item.id,
+      title: item.title,
+      ...(item.severity !== undefined ? { severity: item.severity } : {}),
+      ...(item.category !== undefined ? { category: item.category } : {}),
+      ...(item.description !== undefined ? { description: item.description } : {}),
+      ...(item.whyDeferred !== undefined ? { whyDeferred: item.whyDeferred } : {}),
+      ...(item.provenance !== undefined ? { provenance: item.provenance } : {})
+    })),
     verification: {
       hasChecks: model.verification.hasChecks,
       passed: model.verification.passed,
@@ -485,7 +535,13 @@ export function toDashboardView(
       required: model.adversarial.required,
       satisfied: model.adversarial.satisfied,
       reasons: model.adversarial.reasons,
-      rounds: state.adversarialReviews.map((r) => reviewRound(runDir, r, dispositions))
+      rounds: state.adversarialReviews.map((r) => reviewRound(runDir, r, dispositions)),
+      ...(model.adversarial.latestRound !== undefined
+        ? { latestRound: model.adversarial.latestRound }
+        : {}),
+      ...(model.adversarial.latestVerdict !== undefined
+        ? { latestVerdict: model.adversarial.latestVerdict }
+        : {})
     },
     risk: model.riskClassification,
     ...(model.effectiveMode !== undefined ? { effectiveMode: model.effectiveMode } : {}),
@@ -705,7 +761,12 @@ export function refineStagesForImplementerRunning(
 ): WorkflowStage[] {
   // Terminal statuses: no refinement — the canonical stages already encode the
   // right story (complete / blocked / cancelled / archived).
-  if (facts.status === 'complete' || facts.status === 'cancelled' || facts.status === 'archived') {
+  if (
+    facts.status === 'complete' ||
+    facts.status === 'complete_with_followups' ||
+    facts.status === 'cancelled' ||
+    facts.status === 'archived'
+  ) {
     return [...stages];
   }
 

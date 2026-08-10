@@ -43,6 +43,84 @@ function evaluate(state: RunState, extra: Partial<Omit<EvaluatorInput, 'state'>>
 const passingReview: LatestReviewFacts = { readable: true, verdict: 'pass', severeFindingCount: 0 };
 
 describe('evaluateWorkflow (integration)', () => {
+  it('consumes authoritative deferred dispositions instead of requiring adversarial pass', () => {
+    const completion = {
+      result: 'ready_with_followups',
+      source_review_round: 3,
+      source_adversarial_round: 1,
+      findings: [
+        {
+          source_phase: 'adversarial',
+          source_round: 8,
+          source_id: 'A-8-T-1',
+          title: 'Legacy identity',
+          disposition: 'FIX_LATER',
+          relevant_acceptance_criteria: ['AC-1'],
+          relevant_files: ['db.py'],
+          recommended_verification: ['legacy test']
+        },
+        {
+          source_phase: 'adversarial',
+          source_round: 8,
+          source_id: 'A-8-T-2',
+          title: 'Crash recovery',
+          disposition: 'FIX_LATER',
+          relevant_acceptance_criteria: ['AC-1'],
+          relevant_files: ['db.py'],
+          recommended_verification: ['crash test']
+        },
+        {
+          source_phase: 'adversarial',
+          source_round: 8,
+          source_id: 'A-8-T-3',
+          title: 'Concurrent duplicates',
+          disposition: 'FIX_LATER',
+          relevant_acceptance_criteria: ['AC-1'],
+          relevant_files: ['db.py'],
+          recommended_verification: ['concurrency test']
+        }
+      ]
+    };
+    const active = build({
+      phase: 'completion-evaluation',
+      review_round: 3,
+      verification: { checks: [{ name: 'focused', command: ['pytest'], exit_code: 0 }] },
+      reviews: [{ round: 3, path: 'review-03.codex.json', verdict: 'pass' }],
+      adversarial_reviews: [
+        { round: 8, path: 'adversarial-08.codex.json', verdict: 'changes_required' }
+      ],
+      risk: { requires_adversarial_review: true, reasons: ['persistence'] },
+      cumulative_acceptance_criteria: [
+        { id: 'AC-1', status: 'satisfied', evidence: 'green', round: 3 }
+      ],
+      completion_evaluation: completion
+    });
+    const activeModel = evaluate(active, {
+      acceptedSpecExists: true,
+      acceptedPlanExists: true,
+      latestReview: passingReview
+    });
+    assert.equal(activeModel.gatesPass, true);
+    assert.equal(activeModel.recommendedNextAction.code, 'evaluate-report');
+    assert.equal(activeModel.adversarial.latestRound, 8);
+    assert.equal(activeModel.adversarial.latestVerdict, 'changes_required');
+    assert.equal(activeModel.adversarial.satisfied, true);
+    assert.equal(activeModel.completionEvaluation?.followUpCount, 3);
+
+    const terminal = evaluate(
+      build({
+        ...JSON.parse(JSON.stringify(active.raw)),
+        status: 'complete_with_followups',
+        phase: 'complete_with_followups'
+      }),
+      { acceptedSpecExists: true, acceptedPlanExists: true, latestReview: passingReview }
+    );
+    assert.equal(terminal.status, 'complete_with_followups');
+    assert.equal(terminal.isTerminal, true);
+    assert.equal(terminal.gatesPass, true);
+    assert.equal(terminal.recommendedNextAction.code, 'none');
+  });
+
   it('derives a completion-ready run: gates pass, next action is evaluate-report', () => {
     const state = build({
       artifacts: { enhance: 'feature-spec.codex.json' },
@@ -307,7 +385,9 @@ describe('evaluateWorkflow stage timeline', () => {
   it('marks a freshly-initialized run active at idea-enhanced when enhance is absent (rigorous)', () => {
     // Mode-aware next action only routes to enhance in rigorous mode
     // (controller.py ~3125); otherwise an un-enhanced run reconciles the spec.
-    const model = evaluate(build({ artifacts: {}, effective_mode: 'rigorous' }));
+    const model = evaluate(
+      build({ phase: 'initialized', artifacts: {}, effective_mode: 'rigorous' })
+    );
     const byId = Object.fromEntries(model.stages.map((s) => [s.id, s.status]));
     assert.equal(byId['initialized'], 'complete');
     assert.equal(byId['idea-enhanced'], 'active');

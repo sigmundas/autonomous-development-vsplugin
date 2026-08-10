@@ -120,6 +120,22 @@ export async function openVerificationLog(run: DiscoveredRun): Promise<void> {
   void vscode.window.showWarningMessage('No verification logs are present for this run.');
 }
 
+export async function openFollowUps(run: DiscoveredRun): Promise<void> {
+  await open(
+    resolveExisting(
+      run,
+      run.state?.artifacts.followUpsMarkdown,
+      CONVENTIONAL_ARTIFACT_NAMES.followUpsMarkdown
+    ) ??
+      resolveExisting(
+        run,
+        run.state?.artifacts.followUpsJson,
+        CONVENTIONAL_ARTIFACT_NAMES.followUpsJson
+      ),
+    'Follow-up artifact'
+  );
+}
+
 async function diff(
   leftPath: string | undefined,
   rightPath: string | undefined,

@@ -55,7 +55,13 @@ export interface StageFacts {
   readonly requiresAdversarial: boolean;
   readonly hasAdversarial: boolean;
   readonly adversarialPassed: boolean;
+  readonly latestAdversarialRound?: number;
+  readonly latestAdversarialVerdict?: string;
   readonly nextActionCode: NextActionCode;
+  readonly awaitingHumanDecision?: boolean;
+  readonly awaitingHumanDecisionReason?: string;
+  readonly awaitingHumanDecisionPhase?: string;
+  readonly completionEvaluationResult?: string;
   /**
    * The controller's authoritative phase string, verbatim from run-state.json.
    * When provided, this drives the "active" stage rather than the array-index
@@ -83,7 +89,12 @@ export function stageForControllerPhase(
   phase: string | undefined,
   status: RunStatus
 ): StageId | undefined {
-  if (status === 'complete' || status === 'cancelled' || status === 'archived') {
+  if (
+    status === 'complete' ||
+    status === 'complete_with_followups' ||
+    status === 'cancelled' ||
+    status === 'archived'
+  ) {
     return undefined;
   }
   if (!phase || phase.length === 0) return undefined;
@@ -107,19 +118,30 @@ export function stageForControllerPhase(
     case 'verification':
     case 'verification-failed':
       return 'verification';
+    case 'verified':
+      return 'independent-review';
     case 'review':
     case 'independent-review':
     case 'reviewing':
       return 'independent-review';
+    case 'reviewed':
+      return 'triage';
     case 'triage':
       return 'triage';
     case 'adversarial':
     case 'adversarial-review':
+    case 'adversarially-reviewed':
       return 'adversarial-review';
     case 'completion-evaluation':
+    case 'completion-gates-failed':
       return 'completion-evaluation';
+    case 'review-round-authorized':
+      return 'independent-review';
+    case 'continuation-ready':
+      return undefined;
     case 'review-budget-exhausted':
     case 'blocked':
+    case 'stop-gate-budget-exhausted':
       return undefined;
     default:
       return undefined;
@@ -151,6 +173,8 @@ const NEXT_ACTION_STAGE: Readonly<Record<NextActionCode, StageId>> = {
   'run-review': 'independent-review',
   'triage-findings': 'triage',
   'adversarial-review': 'adversarial-review',
+  'completion-disposition': 'completion-evaluation',
+  'await-human-decision': 'completion-evaluation',
   'evaluate-report': 'completion-evaluation',
   'allow-review': 'independent-review',
   'continue-blocked': 'final',
@@ -185,11 +209,11 @@ function reached(id: StageId, f: StageFacts): boolean {
     case 'triage':
       return f.hasReviews && f.reviewPassed && f.severeFindingCount === 0;
     case 'adversarial-review':
-      return !f.requiresAdversarial || (f.hasAdversarial && f.adversarialPassed);
+      return !f.requiresAdversarial || f.hasAdversarial;
     case 'completion-evaluation':
-      return f.status === 'complete';
+      return f.status === 'complete' || f.status === 'complete_with_followups';
     case 'final':
-      return f.status === 'complete';
+      return f.status === 'complete' || f.status === 'complete_with_followups';
   }
 }
 
@@ -201,33 +225,18 @@ export function deriveStages(f: StageFacts): WorkflowStage[] {
   const terminalBlocked = f.status === 'blocked';
   const terminalCancelled = f.status === 'cancelled';
   const terminalArchived = f.status === 'archived';
-  const isComplete = f.status === 'complete';
+  const isComplete = f.status === 'complete' || f.status === 'complete_with_followups';
   const halted = terminalBlocked || terminalCancelled;
 
-  // Active-stage resolution: reconcile the controller's authoritative phase
-  // (from run-state.json) with the evaluator's next-action code. Both are
-  // authoritative for different questions — the phase reports where the
-  // controller thinks the run is; next-action reports what the workflow gate
-  // logic says should happen next given the artifacts on disk. When the two
-  // disagree (e.g. controller wrote phase = "implementing" as an initial default
-  // but no enhance artifact exists yet), the EARLIER stage wins: forward
-  // progress requires every earlier stage's evidence, so we must not paint the
-  // timeline as ahead of the actual artifacts.
-  //
-  // Never infer the active stage by "everything before this index is done" —
-  // the completion of each stage is decided independently by reached().
+  // The controller phase is the workflow cursor. Gate/next-action failures are
+  // warnings and recommendations; they must not rewind ACTIVE to an earlier
+  // stage. Fall back to next-action only for old/unrecognized phases.
   let activeStageId: StageId | undefined;
   if (!(halted || isComplete || terminalArchived)) {
-    const phaseStage = stageForControllerPhase(f.controllerPhase, f.status);
+    const decisionPhase = f.awaitingHumanDecisionPhase ?? f.controllerPhase;
+    const phaseStage = stageForControllerPhase(decisionPhase, f.status);
     const nextActionStage: StageId | undefined = NEXT_ACTION_STAGE[f.nextActionCode];
-    if (phaseStage && nextActionStage) {
-      const phaseIdx = indexOf(phaseStage);
-      const nextIdx = indexOf(nextActionStage);
-      // Earlier stage wins so the UI never overtakes the actual evidence.
-      activeStageId = phaseIdx <= nextIdx ? phaseStage : nextActionStage;
-    } else {
-      activeStageId = phaseStage ?? nextActionStage;
-    }
+    activeStageId = phaseStage ?? nextActionStage;
   }
   const activeIndex = activeStageId !== undefined ? indexOf(activeStageId) : -1;
 
@@ -274,6 +283,13 @@ export function deriveStages(f: StageFacts): WorkflowStage[] {
         .filter((part): part is string => Boolean(part))
         .join(' · ');
       if (i === activeIndex) {
+        if (f.awaitingHumanDecision) {
+          return {
+            ...base,
+            status: 'active',
+            detail: `${history} · Awaiting decision${f.awaitingHumanDecisionReason ? ` · ${f.awaitingHumanDecisionReason}` : ''}`
+          };
+        }
         const suffix =
           f.controllerPhase === 'review' || f.controllerPhase === 'reviewing'
             ? 're-review in progress'
@@ -281,6 +297,32 @@ export function deriveStages(f: StageFacts): WorkflowStage[] {
         return { ...base, status: 'active', detail: `${history} · ${suffix}` };
       }
       return { ...base, status: 'complete', detail: history };
+    }
+
+    if (stage.id === 'adversarial-review' && f.hasAdversarial) {
+      const history = [
+        f.latestAdversarialRound !== undefined
+          ? `Round ${f.latestAdversarialRound}`
+          : 'Review completed',
+        displayVerdict(f.latestAdversarialVerdict)
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join(' · ');
+      if (i === activeIndex) {
+        const decision = f.awaitingHumanDecision
+          ? `Awaiting decision${f.awaitingHumanDecisionReason ? ` · ${f.awaitingHumanDecisionReason}` : ''}`
+          : 'review completed';
+        return { ...base, status: 'active', detail: `${history} · ${decision}` };
+      }
+      return { ...base, status: 'complete', detail: history };
+    }
+
+    if (i === activeIndex && f.awaitingHumanDecision) {
+      return {
+        ...base,
+        status: 'active',
+        detail: `Awaiting decision${f.awaitingHumanDecisionReason ? ` · ${f.awaitingHumanDecisionReason}` : ''}`
+      };
     }
 
     if (stage.id === 'triage' && i === activeIndex && f.hasReviews) {

@@ -46,9 +46,7 @@ describe('toDashboardView', () => {
       terminal,
       knownRunIds: runs.filter((item) => item.runId !== run.runId).map((item) => item.runId)
     });
-    registry.reconcileRuns([
-      { repositoryId: run.repoId, runId: run.runId, active: true }
-    ]);
+    registry.reconcileRuns([{ repositoryId: run.repoId, runId: run.runId, active: true }]);
     const view = toDashboardView(run, loadEventLog(run.runDir), {
       claudeTerminalOpen: registry.has(terminalIdentityForRun(run))
     });
@@ -77,6 +75,37 @@ describe('toDashboardView', () => {
     // Reconstructed from events.jsonl (run.created, verification.completed).
     assert.equal(view.timeline.length, 2);
     assert.equal(view.timeline[0]?.type, 'run.created');
+  });
+
+  it('renders complete_with_followups as successful with adversarial history', () => {
+    const view = viewFor('completeWithFollowups');
+    assert.equal(view.status, 'complete_with_followups');
+    assert.equal(view.isTerminal, true);
+    assert.equal(view.gatesPass, true);
+    assert.equal(view.gateFailures.length, 0);
+    assert.equal(view.nextAction.code, 'none');
+    assert.equal(view.completion.followUpCount, 3);
+    assert.equal(view.followUps.length, 3);
+    assert.equal(view.followUps[0]?.provenance, 'adversarial-08.codex.json#threats/0');
+    assert.equal(view.review.latestRound, 3);
+    assert.equal(view.review.latestVerdict, 'pass');
+    assert.equal(view.adversarial.latestRound, 8);
+    assert.equal(view.adversarial.latestVerdict, 'changes_required');
+    assert.ok(view.artifacts.some((a) => a.command === 'autonomousDev.openFollowUps'));
+    const triage = view.stages.find((stage) => stage.id === 'triage');
+    const adversarial = view.stages.find((stage) => stage.id === 'adversarial-review');
+    assert.notEqual(triage?.status, 'active');
+    assert.equal(adversarial?.status, 'complete');
+    assert.equal(adversarial?.detail, 'Round 8 · changes required');
+  });
+
+  it('surfaces the recorded human decision and source phase without rewinding triage', () => {
+    const view = viewFor('awaitingDecision');
+    assert.equal(view.recovery.awaitingHumanDecision, true);
+    assert.equal(view.recovery.humanDecisionPhase, 'adversarial');
+    assert.match(view.recovery.humanDecisionReason ?? '', /interpretation A or B/);
+    assert.equal(view.stages.find((stage) => stage.id === 'triage')?.status, 'complete');
+    assert.equal(view.stages.find((stage) => stage.id === 'adversarial-review')?.status, 'active');
   });
 
   it('surfaces current-checkout mode in repository metadata', () => {

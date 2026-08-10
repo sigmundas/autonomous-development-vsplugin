@@ -11,17 +11,9 @@ import {
 import type { ConfigStore } from '../configStore';
 import type { OutputLog } from '../output';
 import { isWorkspaceTrusted } from '../trust';
-import {
-  buildLauncherArgs,
-  withAutonomousClaudePermissions
-} from './claudeLauncher';
-import {
-  type ClaudeTerminalRegistry
-} from './claudeTerminalRegistry';
-import {
-  terminalIdentityForRun,
-  type ClaudeTerminalIdentity
-} from './claudeTerminalIdentity';
+import { buildLauncherArgs, withAutonomousClaudePermissions } from './claudeLauncher';
+import { type ClaudeTerminalRegistry } from './claudeTerminalRegistry';
+import { terminalIdentityForRun, type ClaudeTerminalIdentity } from './claudeTerminalIdentity';
 
 export interface ResumeInClaudeDeps {
   readonly store: ConfigStore;
@@ -178,9 +170,7 @@ export function pluginDirFromControllerPath(controllerPath: string): string | un
 export function worktreeForRun(run: DiscoveredRun): string | undefined {
   const repo = run.state?.repository;
   return (
-    repo?.worktreePath ??
-    repo?.canonicalRoot ??
-    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    repo?.worktreePath ?? repo?.canonicalRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
   );
 }
 
@@ -264,9 +254,7 @@ export function claudeTerminalNameFor(identity: ClaudeTerminalIdentity): string 
  * {@link claudeTerminalNameFor}. Returns `undefined` when the name does not
  * match — never guesses.
  */
-export function parseClaudeTerminalIdentity(
-  name: string
-): ClaudeTerminalIdentity | undefined {
+export function parseClaudeTerminalIdentity(name: string): ClaudeTerminalIdentity | undefined {
   if (!name.startsWith(CLAUDE_TERMINAL_NAME_PREFIX)) return undefined;
   const tail = name.slice(CLAUDE_TERMINAL_NAME_PREFIX.length).trim();
   const parts = tail.split(CLAUDE_TERMINAL_NAME_SEPARATOR);
@@ -501,13 +489,15 @@ async function runResumeInClaude(
 }
 
 /** Focus an existing extension-tracked Claude terminal for a run, if any. */
-export function focusClaudeTerminal(
-  run: DiscoveredRun,
-  registry: ClaudeTerminalRegistry
-): boolean {
+export function focusClaudeTerminal(run: DiscoveredRun, registry: ClaudeTerminalRegistry): boolean {
   return registry.focus(terminalIdentityForRun(run));
 }
 
 function terminalStatus(status: string): boolean {
-  return status === 'complete' || status === 'cancelled' || status === 'archived';
+  return (
+    status === 'complete' ||
+    status === 'complete_with_followups' ||
+    status === 'cancelled' ||
+    status === 'archived'
+  );
 }

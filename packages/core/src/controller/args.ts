@@ -17,6 +17,7 @@ export type ControllerSubcommand =
   | 'accept-drift'
   | 'authorize-review'
   | 'continue-run'
+  | 'start-followup-run'
   | 'cancel'
   | 'archive-run'
   | 'config-show'
@@ -47,6 +48,7 @@ const MUTATING: ReadonlySet<ControllerSubcommand> = new Set([
   'accept-drift',
   'authorize-review',
   'continue-run',
+  'start-followup-run',
   'cancel',
   'archive-run',
   'config-set-active-preset',
@@ -62,6 +64,7 @@ const RUN_SCOPED: ReadonlySet<ControllerSubcommand> = new Set([
   'accept-drift',
   'authorize-review',
   'continue-run',
+  'start-followup-run',
   'cancel',
   'archive-run'
 ]);
@@ -110,6 +113,8 @@ export interface ControllerOptions {
   readonly reason?: string;
   /** continue-run: recovery action carried into the linked child. */
   readonly recoveryIntent?: ControllerRecoveryIntent;
+  /** start-followup-run: selected durable FU-NNN ids. */
+  readonly followUpIds?: readonly string[];
   /** Append --json (list-runs/show-run/status). Config-* commands always emit JSON. */
   readonly json?: boolean;
   /** init: required feature description (--feature). */
@@ -219,6 +224,13 @@ export function buildControllerCommand(
       break;
     case 'continue-run':
       if (options.recoveryIntent) args.push('--intent', options.recoveryIntent);
+      break;
+    case 'start-followup-run':
+      if (!options.followUpIds || options.followUpIds.length === 0) {
+        throw new Error('Controller subcommand "start-followup-run" requires followUpIds');
+      }
+      for (const id of options.followUpIds) args.push('--follow-up-id', id);
+      if (options.label && options.label.length > 0) args.push('--label', options.label);
       break;
     case 'config-show':
     case 'config-validate':

@@ -5,9 +5,7 @@ import type { WorkflowStage } from '@semanticmatter/core';
 import { refineStagesForImplementerRunning } from '../src/dashboard/renderModel';
 
 /** Minimal 12-stage list — only ids and initial statuses matter here. */
-function makeStages(
-  overrides: Partial<Record<string, WorkflowStage['status']>>
-): WorkflowStage[] {
+function makeStages(overrides: Partial<Record<string, WorkflowStage['status']>>): WorkflowStage[] {
   const seed: Array<{ id: string; title: string; status: WorkflowStage['status'] }> = [
     { id: 'initialized', title: 'Initialized', status: 'complete' },
     { id: 'idea-enhanced', title: 'Idea Enhanced', status: 'complete' },
@@ -223,7 +221,7 @@ describe('refineStagesForImplementerRunning — combined rules', () => {
 });
 
 describe('refineStagesForImplementerRunning — terminal statuses are passthrough', () => {
-  for (const status of ['complete', 'cancelled', 'archived'] as const) {
+  for (const status of ['complete', 'complete_with_followups', 'cancelled', 'archived'] as const) {
     it(`does not refine a ${status} run`, () => {
       const canonical = makeStages({ implementing: 'complete', verification: 'complete' });
       const refined = refineStagesForImplementerRunning(canonical, {

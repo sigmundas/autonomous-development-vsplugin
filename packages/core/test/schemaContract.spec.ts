@@ -195,6 +195,16 @@ describe('schema contract: mirrored controller schemas (REFERENCE §8)', () => {
     assert.equal(resolved?.uniqueItems, true);
     assert.equal(resolved?.items?.pattern, '^F-[0-9]+$');
   });
+
+  it('mirrors the four authoritative completion dispositions', () => {
+    const finding = readSchema('completion-disposition.schema.json').properties?.findings?.items;
+    assert.deepEqual(finding?.properties?.disposition?.enum, [
+      'MUST_FIX_NOW',
+      'FIX_LATER',
+      'ACCEPTED_WITH_EVIDENCE',
+      'HUMAN_DECISION_REQUIRED'
+    ]);
+  });
 });
 
 describe('schema contract: realistic fixtures validate against the mirror', () => {

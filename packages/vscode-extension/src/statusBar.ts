@@ -29,14 +29,15 @@ export class RunStatusBar implements vscode.Disposable {
       return;
     }
     const icon =
-      run.model.status === 'complete'
+      run.model.status === 'complete' || run.model.status === 'complete_with_followups'
         ? '$(pass-filled)'
         : run.model.status === 'blocked'
           ? '$(error)'
           : run.model.status === 'active'
             ? '$(pulse)'
             : '$(circle-outline)';
-    this.item.text = `${icon} ${run.runId} · ${run.model.phase}`;
+    const followups = run.model.completionEvaluation?.followUpCount ?? 0;
+    this.item.text = `${icon} ${run.runId} · ${run.model.phase}${followups > 0 ? ` · ${followups} follow-ups` : ''}`;
     const tip = new vscode.MarkdownString();
     tip.appendMarkdown(`**Autonomous Development run ${run.runId}**\n\n`);
     tip.appendMarkdown(`- Status: ${run.model.status}\n`);

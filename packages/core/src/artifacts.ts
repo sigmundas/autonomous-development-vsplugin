@@ -80,5 +80,7 @@ export const CONVENTIONAL_ARTIFACT_NAMES = {
   enhance: 'feature-spec.codex.json',
   acceptedSpec: 'accepted-spec.md',
   plan: 'implementation-plan.codex.json',
-  acceptedPlan: 'accepted-plan.md'
+  acceptedPlan: 'accepted-plan.md',
+  followUpsJson: 'follow-ups.json',
+  followUpsMarkdown: 'follow-ups.md'
 } as const;

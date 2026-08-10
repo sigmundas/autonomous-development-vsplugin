@@ -20,6 +20,8 @@ export type Scenario =
   | 'changesRequired'
   | 'adversarialRequired'
   | 'complete'
+  | 'completeWithFollowups'
+  | 'awaitingDecision'
   | 'blocked'
   | 'cancelled'
   | 'archived'
@@ -182,6 +184,52 @@ export function buildFixtures(): Fixtures {
       artifacts: { feature_request: 'feature-request.md' }
     }),
     { 'feature-request.md': FEATURE_MD }
+  );
+
+  writeRun(
+    stateHome,
+    'awaitingDecision',
+    baseState('awaitingDecision', {
+      phase: 'completion-evaluation',
+      awaiting_human_decision: true,
+      awaiting_human_decision_reason: 'Choose whether scientific interpretation A or B applies.',
+      awaiting_human_decision_phase: 'adversarial',
+      review_round: 3,
+      artifacts: { ...FULL_ARTIFACTS, review: 'review-03.codex.json' },
+      verification: passingVerification(),
+      reviews: [{ round: 3, path: 'review-03.codex.json', verdict: 'pass' }],
+      adversarial_reviews: [
+        { round: 8, path: 'adversarial-08.codex.json', verdict: 'changes_required' }
+      ],
+      risk: { requires_adversarial_review: true, reasons: ['Scientific semantics'] },
+      completion_evaluation: {
+        result: 'human_decision_required',
+        source_review_round: 3,
+        source_adversarial_round: 1,
+        findings: [
+          {
+            source_phase: 'adversarial',
+            source_round: 8,
+            source_id: 'A-8-T-1',
+            title: 'Scientific interpretation',
+            disposition: 'HUMAN_DECISION_REQUIRED',
+            relevant_acceptance_criteria: [],
+            relevant_files: ['science.py'],
+            recommended_verification: ['scientific fixture']
+          }
+        ]
+      }
+    }),
+    {
+      ...FULL_ARTIFACT_FILES,
+      'verification/unit.log': 'ok\n',
+      'review-03.codex.json': passingReview(),
+      'adversarial-08.codex.json': JSON.stringify({
+        verdict: 'changes_required',
+        summary: 'Decision required',
+        threats: []
+      })
+    }
   );
 
   // 1a. currentCheckout — current-checkout mode on a clean feature branch.
@@ -400,6 +448,140 @@ export function buildFixtures(): Fixtures {
   // 7. blocked — review budget exhausted → blockingReason set.
   writeRun(
     stateHome,
+    'completeWithFollowups',
+    baseState('completeWithFollowups', {
+      status: 'complete_with_followups',
+      phase: 'complete_with_followups',
+      review_round: 3,
+      artifacts: {
+        ...FULL_ARTIFACTS,
+        review: 'review-03.codex.json',
+        adversarial: 'adversarial-08.codex.json',
+        follow_ups_json: 'follow-ups.json',
+        follow_ups_markdown: 'follow-ups.md'
+      },
+      verification: {
+        passed: true,
+        checks: [
+          { name: 'focused', command: ['pytest', 'focused'], exit_code: 0 },
+          { name: 'broader', command: ['pytest'], exit_code: 0 }
+        ]
+      },
+      reviews: [{ round: 3, path: 'review-03.codex.json', verdict: 'pass' }],
+      adversarial_reviews: [
+        { round: 8, path: 'adversarial-08.codex.json', verdict: 'changes_required' }
+      ],
+      risk: { requires_adversarial_review: true, reasons: ['Persistence change'] },
+      cumulative_acceptance_criteria: [
+        { id: 'AC-1', status: 'satisfied', evidence: 'focused and broader suites', round: 3 }
+      ],
+      completion_evaluation: {
+        result: 'ready_with_followups',
+        summary: 'Remaining items are architectural hardening outside the early feature scope.',
+        source_review_round: 3,
+        source_adversarial_round: 1,
+        findings: [
+          {
+            source_phase: 'adversarial',
+            source_round: 8,
+            source_id: 'A-8-T-1',
+            title: 'Legacy row identity',
+            severity: 'medium',
+            category: 'migration',
+            disposition: 'FIX_LATER',
+            impact: 'additional_hardening',
+            rationale: 'Outside scope',
+            relevant_acceptance_criteria: ['AC-1'],
+            relevant_files: ['persistence.py'],
+            recommended_verification: ['legacy repetition test']
+          },
+          {
+            source_phase: 'adversarial',
+            source_round: 8,
+            source_id: 'A-8-T-2',
+            title: 'Hard-crash transaction recovery',
+            severity: 'medium',
+            category: 'data_loss',
+            disposition: 'FIX_LATER',
+            impact: 'additional_hardening',
+            rationale: 'Crash hardening',
+            relevant_acceptance_criteria: ['AC-1'],
+            relevant_files: ['persistence.py'],
+            recommended_verification: ['crash injection']
+          },
+          {
+            source_phase: 'adversarial',
+            source_round: 8,
+            source_id: 'A-8-T-3',
+            title: 'Concurrent duplicate creation',
+            severity: 'medium',
+            category: 'concurrency',
+            disposition: 'FIX_LATER',
+            impact: 'additional_hardening',
+            rationale: 'Unlikely writers',
+            relevant_acceptance_criteria: ['AC-1'],
+            relevant_files: ['persistence.py'],
+            recommended_verification: ['concurrency test']
+          }
+        ]
+      }
+    }),
+    {
+      ...FULL_ARTIFACT_FILES,
+      'review-03.codex.json': passingReview(),
+      'adversarial-08.codex.json': JSON.stringify({
+        verdict: 'changes_required',
+        summary: 'Architectural hardening remains',
+        threats: []
+      }),
+      'follow-ups.json': JSON.stringify({
+        source_run_id: 'completeWithFollowups',
+        follow_ups: [
+          {
+            id: 'FU-001',
+            title: 'Legacy row identity',
+            severity: 'medium',
+            category: 'migration',
+            description: 'Preserve identity across repeated legacy writes',
+            why_deferred: 'Outside early scope',
+            provenance: 'adversarial-08.codex.json#threats/0',
+            relevant_acceptance_criteria: ['AC-1'],
+            relevant_files: ['persistence.py'],
+            recommended_verification: ['legacy repetition test']
+          },
+          {
+            id: 'FU-002',
+            title: 'Hard-crash transaction recovery',
+            severity: 'medium',
+            category: 'data_loss',
+            description: 'Recover between separate commits',
+            why_deferred: 'Additional crash hardening',
+            provenance: 'adversarial-08.codex.json#threats/1',
+            relevant_acceptance_criteria: ['AC-1'],
+            relevant_files: ['persistence.py'],
+            recommended_verification: ['crash injection']
+          },
+          {
+            id: 'FU-003',
+            title: 'Concurrent duplicate creation',
+            severity: 'medium',
+            category: 'concurrency',
+            description: 'Serialize unlikely simultaneous writers',
+            why_deferred: 'Additional concurrency hardening',
+            provenance: 'adversarial-08.codex.json#threats/2',
+            relevant_acceptance_criteria: ['AC-1'],
+            relevant_files: ['persistence.py'],
+            recommended_verification: ['concurrency test']
+          }
+        ]
+      }),
+      'follow-ups.md': '# Follow-ups\n\nThree deferred hardening items.\n'
+    }
+  );
+
+  // 7. blocked — review budget exhausted → blockingReason set.
+  writeRun(
+    stateHome,
     'blocked',
     baseState('blocked', {
       status: 'blocked',
@@ -601,6 +783,8 @@ export function buildFixtures(): Fixtures {
       changesRequired: 'changesRequired',
       adversarialRequired: 'adversarialRequired',
       complete: 'complete',
+      completeWithFollowups: 'completeWithFollowups',
+      awaitingDecision: 'awaitingDecision',
       blocked: 'blocked',
       cancelled: 'cancelled',
       archived: 'archived',

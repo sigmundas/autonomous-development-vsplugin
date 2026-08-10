@@ -7,11 +7,19 @@
  */
 
 /** Normalized run status. Unknown strings collapse to `'unknown'`. */
-export type RunStatus = 'active' | 'complete' | 'blocked' | 'cancelled' | 'archived' | 'unknown';
+export type RunStatus =
+  | 'active'
+  | 'complete'
+  | 'complete_with_followups'
+  | 'blocked'
+  | 'cancelled'
+  | 'archived'
+  | 'unknown';
 
 /** Terminal statuses never transition further. */
 export const TERMINAL_STATUSES: readonly RunStatus[] = [
   'complete',
+  'complete_with_followups',
   'blocked',
   'cancelled',
   'archived'
@@ -47,6 +55,9 @@ export interface ArtifactMap {
   readonly acceptedPlan?: string;
   readonly review?: string;
   readonly adversarial?: string;
+  readonly followUpsJson?: string;
+  readonly followUpsMarkdown?: string;
+  readonly followUpContext?: string;
   readonly raw: Readonly<Record<string, string>>;
 }
 
@@ -102,6 +113,78 @@ export interface ReviewRef {
 export interface RiskInfo {
   readonly requiresAdversarialReview: boolean;
   readonly reasons: readonly string[];
+}
+
+export type CompletionDisposition =
+  | 'MUST_FIX_NOW'
+  | 'FIX_LATER'
+  | 'ACCEPTED_WITH_EVIDENCE'
+  | 'HUMAN_DECISION_REQUIRED';
+
+export type CompletionEvaluationResult =
+  | 'ready'
+  | 'ready_with_followups'
+  | 'must_fix_now'
+  | 'human_decision_required';
+
+export interface CompletionDispositionFinding {
+  readonly sourcePhase?: string;
+  readonly sourceRound?: number;
+  readonly sourceId?: string;
+  readonly title?: string;
+  readonly severity?: string;
+  readonly category?: string;
+  readonly description?: string;
+  readonly impact?: string;
+  readonly disposition?: CompletionDisposition;
+  readonly rationale?: string;
+  readonly evidence?: string;
+  readonly relevantAcceptanceCriteria: readonly string[];
+  readonly relevantFiles: readonly string[];
+  readonly suggestedFutureScope?: string;
+  readonly recommendedVerification: readonly string[];
+  readonly humanInputEventuallyRequired?: boolean;
+  readonly provenance?: string;
+  readonly raw: Readonly<Record<string, unknown>>;
+}
+
+export interface CompletionEvaluation {
+  readonly evaluatedAt?: string;
+  readonly summary?: string;
+  readonly result?: CompletionEvaluationResult;
+  readonly sourceReviewRound?: number;
+  readonly sourceAdversarialRound?: number;
+  readonly findings: readonly CompletionDispositionFinding[];
+}
+
+export interface FollowUpSource {
+  readonly sourceRunId?: string;
+  readonly selectedIds: readonly string[];
+  readonly contextArtifact?: string;
+}
+
+export interface FollowUpItem {
+  readonly id: string;
+  readonly title: string;
+  readonly sourceRunId?: string;
+  readonly sourcePhase?: string;
+  readonly sourceRound?: number;
+  readonly originalFindingId?: string;
+  readonly severity?: string;
+  readonly category?: string;
+  readonly description?: string;
+  readonly whyDeferred?: string;
+  readonly relevantAcceptanceCriteria: readonly string[];
+  readonly relevantFiles: readonly string[];
+  readonly suggestedFutureScope?: string;
+  readonly recommendedVerification: readonly string[];
+  readonly humanInputEventuallyRequired?: boolean;
+  readonly provenance?: string;
+}
+
+export interface FollowUpsArtifact {
+  readonly sourceRunId?: string;
+  readonly followUps: readonly FollowUpItem[];
 }
 
 /**
@@ -216,8 +299,10 @@ export interface RunState {
   readonly stopGateBlocks: number;
   readonly awaitingHumanDecision?: boolean;
   readonly awaitingHumanDecisionReason?: string;
+  readonly awaitingHumanDecisionPhase?: string;
   readonly parentRunId?: string;
   readonly additionalReviewRounds?: number;
+  readonly reviewBudgetExhausted?: boolean;
   readonly artifacts: ArtifactMap;
   readonly verification: VerificationState;
   readonly reviews: readonly ReviewRef[];
@@ -225,6 +310,8 @@ export interface RunState {
   readonly risk: RiskInfo;
   readonly notes: readonly string[];
   readonly completionGateFailures: readonly string[];
+  readonly completionEvaluation?: CompletionEvaluation;
+  readonly followUpSource?: FollowUpSource;
   /** Merged finding ledger (full-then-delta). Empty when absent/malformed. */
   readonly cumulativeFindings: readonly CumulativeFinding[];
   /** Cumulative acceptance-criteria ledger. Empty when absent/malformed. */

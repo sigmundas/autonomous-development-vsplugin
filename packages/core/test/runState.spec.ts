@@ -382,6 +382,7 @@ describe('normalizeStatus', () => {
   it('maps known and aliased statuses', () => {
     assert.equal(normalizeStatus('ACTIVE'), 'active');
     assert.equal(normalizeStatus('completed'), 'complete');
+    assert.equal(normalizeStatus('complete_with_followups'), 'complete_with_followups');
     assert.equal(normalizeStatus('canceled'), 'cancelled');
     assert.equal(normalizeStatus('archived'), 'archived');
     assert.equal(normalizeStatus('blocked'), 'blocked');
@@ -394,5 +395,46 @@ describe('normalizeStatus', () => {
     // emits running/in_progress, so these must NOT masquerade as active.
     assert.equal(normalizeStatus('running'), 'unknown');
     assert.equal(normalizeStatus('in_progress'), 'unknown');
+  });
+});
+
+describe('completion disposition normalization', () => {
+  it('preserves authoritative completion and follow-up metadata', () => {
+    const { state } = parseRunStateText(
+      JSON.stringify({
+        schema_version: 2,
+        run_id: 'r-followups',
+        status: 'complete_with_followups',
+        phase: 'complete_with_followups',
+        awaiting_human_decision_phase: 'adversarial',
+        artifacts: {
+          follow_ups_json: 'follow-ups.json',
+          follow_ups_markdown: 'follow-ups.md'
+        },
+        completion_evaluation: {
+          result: 'ready_with_followups',
+          source_review_round: 3,
+          source_adversarial_round: 1,
+          findings: [
+            {
+              source_phase: 'adversarial',
+              source_round: 8,
+              source_id: 'A-8-T-1',
+              title: 'Crash recovery',
+              disposition: 'FIX_LATER',
+              relevant_acceptance_criteria: ['AC-1'],
+              relevant_files: ['db.py'],
+              recommended_verification: ['crash test']
+            }
+          ]
+        }
+      })
+    );
+    assert.equal(state?.status, 'complete_with_followups');
+    assert.equal(state?.artifacts.followUpsJson, 'follow-ups.json');
+    assert.equal(state?.completionEvaluation?.result, 'ready_with_followups');
+    assert.equal(state?.completionEvaluation?.findings[0]?.disposition, 'FIX_LATER');
+    assert.deepEqual(state?.completionEvaluation?.findings[0]?.relevantFiles, ['db.py']);
+    assert.equal(state?.awaitingHumanDecisionPhase, 'adversarial');
   });
 });

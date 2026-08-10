@@ -208,6 +208,16 @@ export interface DashboardConfigSnapshot {
   readonly phases: readonly DashboardPhaseSnapshot[];
 }
 
+export interface DashboardFollowUp {
+  readonly id: string;
+  readonly title: string;
+  readonly severity?: string;
+  readonly category?: string;
+  readonly description?: string;
+  readonly whyDeferred?: string;
+  readonly provenance?: string;
+}
+
 export interface DashboardView {
   readonly runId: string;
   readonly repoId: string;
@@ -250,7 +260,15 @@ export interface DashboardView {
     readonly verificationPreserved: boolean;
     readonly parentRunId?: string;
     readonly continuedByRunId?: string;
+    readonly humanDecisionReason?: string;
+    readonly humanDecisionPhase?: string;
   };
+  readonly completion: {
+    readonly result?: string;
+    readonly summary?: string;
+    readonly followUpCount: number;
+  };
+  readonly followUps: readonly DashboardFollowUp[];
   readonly verification: {
     readonly hasChecks: boolean;
     readonly passed: boolean;
@@ -272,6 +290,8 @@ export interface DashboardView {
     readonly satisfied: boolean;
     readonly reasons: readonly string[];
     readonly rounds: readonly DashboardReviewRound[];
+    readonly latestRound?: number;
+    readonly latestVerdict?: string;
   };
   readonly risk: {
     readonly requiresAdversarialReview: boolean;

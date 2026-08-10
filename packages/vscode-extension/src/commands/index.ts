@@ -281,6 +281,7 @@ export function registerCommands(deps: CommandDeps): void {
   register('autonomousDev.openAcceptedPlan', runScoped(artifacts.openAcceptedPlan));
   register('autonomousDev.openLatestReview', runScoped(artifacts.openLatestReview));
   register('autonomousDev.openVerificationLog', runScoped(artifacts.openVerificationLog));
+  register('autonomousDev.openFollowUps', runScoped(artifacts.openFollowUps));
   register('autonomousDev.compareSpec', runScoped(artifacts.compareSpec));
   register('autonomousDev.comparePlan', runScoped(artifacts.comparePlan));
   register('autonomousDev.revealRunDirectory', runScoped(artifacts.revealRunDirectory));
@@ -308,6 +309,10 @@ export function registerCommands(deps: CommandDeps): void {
   register(
     'autonomousDev.continueBlockedRun',
     runScoped((run) => controller.continueBlockedRun(run, recoveryDeps))
+  );
+  register(
+    'autonomousDev.startFollowupRun',
+    runScoped((run) => controller.startFollowupRun(run, recoveryDeps))
   );
 
   register('autonomousDev.setupController', () =>

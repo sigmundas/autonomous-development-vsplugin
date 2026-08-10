@@ -150,6 +150,16 @@
         "category": "Autonomous Development"
       },
       {
+        "command": "autonomousDev.openFollowUps",
+        "title": "View Follow-ups",
+        "category": "Autonomous Development"
+      },
+      {
+        "command": "autonomousDev.startFollowupRun",
+        "title": "Start Follow-up Run…",
+        "category": "Autonomous Development"
+      },
+      {
         "command": "autonomousDev.compareSpec",
         "title": "Compare Original Idea with Accepted Specification",
         "category": "Autonomous Development"
@@ -356,6 +366,16 @@
           "group": "2_artifacts@7"
         },
         {
+          "command": "autonomousDev.openFollowUps",
+          "when": "viewItem =~ /^autonomousDev.run/",
+          "group": "2_artifacts@8"
+        },
+        {
+          "command": "autonomousDev.startFollowupRun",
+          "when": "viewItem == autonomousDev.run.completed && autonomousDev.trusted",
+          "group": "5_mutate@5"
+        },
+        {
           "command": "autonomousDev.compareSpec",
           "when": "viewItem =~ /^autonomousDev.run/",
           "group": "3_compare@1"
@@ -491,6 +511,14 @@
         {
           "command": "autonomousDev.openVerificationLog",
           "when": "false"
+        },
+        {
+          "command": "autonomousDev.openFollowUps",
+          "when": "false"
+        },
+        {
+          "command": "autonomousDev.startFollowupRun",
+          "when": "autonomousDev.trusted"
         },
         {
           "command": "autonomousDev.compareSpec",

@@ -1,7 +1,8 @@
 /**
- * Completion-gate logic — replicates `cmd_evaluate` exactly
- * (docs/REFERENCE.md §6; controller.py `cmd_evaluate`, ~lines 2461-2566). The
- * gate FAILS (run stays active) if ANY check below fails.
+ * Legacy completion-gate projection plus authoritative disposition integration.
+ * The persisted controller result releases review/adversarial concerns only for
+ * `ready` states; this module never reclassifies individual findings. Runs that
+ * predate completion evaluation retain the established fail-closed projection.
  *
  * Severe findings come from the cumulative finding ledger when it is non-empty
  * (`cumulative_unresolved_severe`, fail closed), otherwise from the latest
@@ -21,7 +22,9 @@ export type GateFailureCode =
   | 'severe-findings'
   | 'acceptance-criteria-unsatisfied'
   | 'review-inconsistent-pass'
-  | 'adversarial-required';
+  | 'adversarial-required'
+  | 'disposition-must-fix'
+  | 'disposition-human-decision';
 
 export interface GateFailure {
   readonly code: GateFailureCode;
@@ -55,6 +58,8 @@ export interface GateFacts {
   readonly requiresAdversarial: boolean;
   readonly hasAdversarial: boolean;
   readonly latestAdversarialVerdict?: string;
+  /** Canonical controller disposition result. Absent for legacy runs. */
+  readonly completionEvaluationResult?: string;
 }
 
 function isPass(verdict: string | undefined): boolean {
@@ -64,6 +69,9 @@ function isPass(verdict: string | undefined): boolean {
 /** Ordered completion-gate failures (empty ⇒ gate passes ⇒ run may complete). */
 export function evaluateGates(f: GateFacts): GateFailure[] {
   const failures: GateFailure[] = [];
+  const dispositionReleasesReview =
+    f.completionEvaluationResult === 'ready' ||
+    f.completionEvaluationResult === 'ready_with_followups';
 
   if (!f.acceptedSpecExists) {
     failures.push({
@@ -92,7 +100,7 @@ export function evaluateGates(f: GateFacts): GateFailure[] {
     failures.push({ code: 'no-reviews', message: 'No independent review has been recorded' });
   } else {
     const verdictIsPass = isPass(f.latestReviewVerdict);
-    if (!f.latestReviewReadable || !verdictIsPass) {
+    if (!f.latestReviewReadable || (!verdictIsPass && !dispositionReleasesReview)) {
       failures.push({
         code: 'review-not-pass',
         message: f.latestReviewReadable
@@ -105,7 +113,7 @@ export function evaluateGates(f: GateFacts): GateFailure[] {
     const severeCount = f.hasCumulativeFindings
       ? (f.cumulativeSevereFindingCount ?? 0)
       : f.severeFindingCount;
-    if (severeCount > 0) {
+    if (severeCount > 0 && !dispositionReleasesReview) {
       const describe =
         f.severeFindingsDescription && f.severeFindingsDescription.length > 0
           ? `: ${f.severeFindingsDescription}`
@@ -135,7 +143,7 @@ export function evaluateGates(f: GateFacts): GateFailure[] {
     // Reject an internally-inconsistent review: a `pass` verdict cannot coexist
     // with unresolved blocking findings or unsatisfied acceptance criteria
     // (controller.py ~2548).
-    if (verdictIsPass && (severeCount > 0 || blockingAcCount > 0)) {
+    if (verdictIsPass && ((severeCount > 0 && !dispositionReleasesReview) || blockingAcCount > 0)) {
       failures.push({
         code: 'review-inconsistent-pass',
         message:
@@ -144,12 +152,27 @@ export function evaluateGates(f: GateFacts): GateFailure[] {
       });
     }
   }
-  if (f.requiresAdversarial && (!f.hasAdversarial || !isPass(f.latestAdversarialVerdict))) {
+  if (
+    f.requiresAdversarial &&
+    (!f.hasAdversarial || (!isPass(f.latestAdversarialVerdict) && !dispositionReleasesReview))
+  ) {
     failures.push({
       code: 'adversarial-required',
       message: f.hasAdversarial
         ? 'Adversarial review is required and its latest verdict is not "pass"'
         : 'Adversarial review is required but none has been recorded'
+    });
+  }
+  if (f.completionEvaluationResult === 'must_fix_now') {
+    failures.push({
+      code: 'disposition-must-fix',
+      message: 'Completion evaluation records one or more MUST_FIX_NOW findings'
+    });
+  }
+  if (f.completionEvaluationResult === 'human_decision_required') {
+    failures.push({
+      code: 'disposition-human-decision',
+      message: 'Completion evaluation requires a human product or authority decision'
     });
   }
 

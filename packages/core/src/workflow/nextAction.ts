@@ -30,6 +30,8 @@ export type NextActionCode =
   | 'run-review'
   | 'triage-findings'
   | 'adversarial-review'
+  | 'completion-disposition'
+  | 'await-human-decision'
   | 'evaluate-report';
 
 export interface NextAction {
@@ -51,6 +53,8 @@ const MESSAGES: Readonly<Record<NextActionCode, string>> = {
   'run-review': 'Run the independent Codex code review',
   'triage-findings': 'Triage the latest Codex findings, fix valid issues, verify, and re-review',
   'adversarial-review': 'Complete the required adversarial review and address valid risks',
+  'completion-disposition': 'Disposition every remaining review and adversarial finding',
+  'await-human-decision': 'Await the recorded human product or authority decision',
   'evaluate-report':
     'Run the controller completion-gate evaluation and provide the final implementation report'
 };
@@ -86,6 +90,8 @@ export interface NextActionFacts {
   readonly requiresAdversarial: boolean;
   readonly hasAdversarial: boolean;
   readonly latestAdversarialVerdict?: string;
+  readonly completionEvaluationResult?: string;
+  readonly awaitingHumanDecision?: boolean;
 }
 
 function isPass(verdict: string | undefined): boolean {
@@ -94,7 +100,12 @@ function isPass(verdict: string | undefined): boolean {
 
 export function recommendNextAction(f: NextActionFacts): NextAction {
   // Defensive front extensions (no controller equivalent; never contradict it).
-  if (f.status === 'cancelled' || f.status === 'archived' || f.status === 'complete') {
+  if (
+    f.status === 'cancelled' ||
+    f.status === 'archived' ||
+    f.status === 'complete' ||
+    f.status === 'complete_with_followups'
+  ) {
     return nextAction('none');
   }
   if (f.phase === 'review-budget-exhausted' && f.status === 'active') {
@@ -108,6 +119,19 @@ export function recommendNextAction(f: NextActionFacts): NextAction {
       return nextAction('continue-blocked');
     }
     return nextAction('continue-blocked');
+  }
+  if (f.awaitingHumanDecision) {
+    return nextAction('await-human-decision');
+  }
+
+  const dispositionReleasesReview =
+    f.completionEvaluationResult === 'ready' ||
+    f.completionEvaluationResult === 'ready_with_followups';
+  if (f.completionEvaluationResult === 'must_fix_now') {
+    return nextAction('triage-findings');
+  }
+  if (f.phase === 'completion-evaluation' && !dispositionReleasesReview) {
+    return nextAction('completion-disposition');
   }
 
   // controller.py:compute_next_action — first match wins.
@@ -131,11 +155,17 @@ export function recommendNextAction(f: NextActionFacts): NextAction {
   if (!f.hasReviews) {
     return nextAction('run-review');
   }
-  if (!isPass(f.effectiveReviewVerdict) || f.cumulativeUnresolvedSevere === true) {
+  if (
+    (!isPass(f.effectiveReviewVerdict) || f.cumulativeUnresolvedSevere === true) &&
+    !dispositionReleasesReview
+  ) {
     return nextAction('triage-findings');
   }
   if (f.requiresAdversarial && (!f.hasAdversarial || !isPass(f.latestAdversarialVerdict))) {
-    return nextAction('adversarial-review');
+    if (f.hasAdversarial && f.phase === 'adversarially-reviewed') {
+      return nextAction('completion-disposition');
+    }
+    if (!dispositionReleasesReview) return nextAction('adversarial-review');
   }
   return nextAction('evaluate-report');
 }

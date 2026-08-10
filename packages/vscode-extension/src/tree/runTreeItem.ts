@@ -47,6 +47,7 @@ function statusIcon(status: RunStatus, hasModel: boolean): vscode.ThemeIcon {
     case 'active':
       return new vscode.ThemeIcon('pulse', new vscode.ThemeColor('charts.blue'));
     case 'complete':
+    case 'complete_with_followups':
       return new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'));
     case 'blocked':
       return new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
@@ -74,6 +75,9 @@ function runDescription(run: DiscoveredRun): string {
   }
   const status = run.model?.status ?? run.state.status;
   const phase = run.model?.phase ?? run.state.phase;
+  if (status === 'complete_with_followups') {
+    return `complete · ${run.model?.completionEvaluation?.followUpCount ?? 0} follow-ups`;
+  }
   const review = run.model?.review;
   if (status === 'active' && review?.hasReviews) {
     const round = review.latestRound !== undefined ? `round ${review.latestRound}` : 'review';
@@ -137,6 +141,9 @@ function runTooltip(run: DiscoveredRun): vscode.MarkdownString {
       );
     }
     md.appendMarkdown(`- Unresolved gates: ${run.model.completionGateFailures.length}\n`);
+    if (run.model.completionEvaluation?.followUpCount) {
+      md.appendMarkdown(`- Follow-ups: ${run.model.completionEvaluation.followUpCount}\n`);
+    }
     md.appendMarkdown(`- Next: ${run.model.recommendedNextAction.message || '—'}\n`);
   }
   if (run.diagnostics.length > 0) {
@@ -261,14 +268,35 @@ export function detailNodes(run: DiscoveredRun): DetailNode[] {
     }
 
     if (model.adversarial.required) {
+      const adversarialDetail = [
+        model.adversarial.latestRound !== undefined
+          ? `round ${model.adversarial.latestRound}`
+          : undefined,
+        model.adversarial.latestVerdict
+          ? displayVerdict(model.adversarial.latestVerdict)
+          : model.adversarial.satisfied
+            ? 'satisfied'
+            : 'required'
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join(' · ');
       push(
         'adversarial',
         'Adversarial review',
-        model.adversarial.satisfied ? 'satisfied' : 'required',
+        adversarialDetail,
         new vscode.ThemeIcon(
           'shield',
           new vscode.ThemeColor(model.adversarial.satisfied ? 'charts.green' : 'charts.yellow')
         )
+      );
+    }
+
+    if (model.completionEvaluation?.followUpCount) {
+      push(
+        'follow-ups',
+        'Follow-ups',
+        String(model.completionEvaluation.followUpCount),
+        new vscode.ThemeIcon('issues', new vscode.ThemeColor('charts.blue'))
       );
     }
 

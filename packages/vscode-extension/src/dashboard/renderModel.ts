@@ -701,18 +701,11 @@ function formatEffort(effort: string): string {
 }
 
 /**
- * Controller phases at which the implementation action is NOT yet considered
- * complete. Includes every phase up to and including `implementing` — while
- * the controller is still recording any of these, an extension-managed Claude
- * terminal for the run means Claude is doing implementation work.
+ * Controller phases at which implementation is actively underway. Terminal
+ * liveness alone is not workflow evidence: Claude remains alive while it
+ * orchestrates specification and planning work.
  */
-const PRE_IMPLEMENTATION_COMPLETE_PHASES: ReadonlySet<string> = new Set([
-  'initialized',
-  'enhance',
-  'enhancing',
-  'idea-enhanced',
-  'spec-accepted',
-  'plan-proposed',
+const IMPLEMENTATION_ACTIVE_PHASES: ReadonlySet<string> = new Set([
   'plan-accepted',
   'implementing'
 ]);
@@ -742,16 +735,13 @@ export interface ImplementerRefinementFacts {
  * run):
  *
  * 1. While an extension-managed Claude terminal is alive AND the controller
- *    has NOT recorded completion of the implementation action, Implementing
- *    remains active. "Recorded completion" means the controller has advanced
- *    the phase past `implementing` (or the earlier planning/enhance phases).
+ *    records an implementation phase, Implementing remains active. Earlier
+ *    specification and planning phases remain authoritative.
  *
- * 2. Verification may become active only when ALL THREE conditions hold:
- *    (a) the implementation action has completed (controller phase is no
- *        longer one of the pre-implementation-complete phases),
- *    (b) the controller state has transitioned to verification (phase is
+ * 2. Verification may become active only when BOTH conditions hold:
+ *    (a) the controller state has transitioned to verification (phase is
  *        `verification` or `verification-failed`), and
- *    (c) at least one verification action has started or been recorded
+ *    (b) at least one verification action has started or been recorded
  *        (hasChecks is true).
  *    Otherwise Verification remains pending — never promoted to active by an
  *    earlier heuristic. Verification=failed continues to be shown when checks
@@ -772,20 +762,19 @@ export function refineStagesForImplementerRunning(
     return [...stages];
   }
 
-  const implementationCompleted = !PRE_IMPLEMENTATION_COMPLETE_PHASES.has(facts.controllerPhase);
-  const verificationCanBeActive =
-    implementationCompleted && VERIFICATION_PHASES.has(facts.controllerPhase) && facts.hasChecks;
+  const implementationIsActive = IMPLEMENTATION_ACTIVE_PHASES.has(facts.controllerPhase);
+  const verificationCanBeActive = VERIFICATION_PHASES.has(facts.controllerPhase) && facts.hasChecks;
 
   return stages.map((stage): WorkflowStage => {
     if (stage.id === 'implementing') {
       // Rule 1: hold Implementing at active while Claude is still working.
-      if (facts.claudeTerminalOpen && !implementationCompleted) {
+      if (facts.claudeTerminalOpen && implementationIsActive) {
         return { ...stage, status: 'active' };
       }
       return stage;
     }
     if (stage.id === 'verification') {
-      // Rule 2: Verification may be active only when all three conditions hold.
+      // Rule 2: Verification may be active only when both conditions hold.
       if (stage.status === 'active' && !verificationCanBeActive) {
         return { ...stage, status: 'pending' };
       }

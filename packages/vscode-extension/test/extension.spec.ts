@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 
 import * as vscode from 'vscode';
@@ -296,5 +296,15 @@ describe('opening artifacts and comparisons', () => {
     const uri = vscode.Uri.file(path.join(fixtures.runDir('complete'), 'accepted-plan.md'));
     const editor = await openFileAtLine(uri, 3);
     assert.equal(editor.selection.active.line, 2);
+  });
+
+  it('opens the aggregate Verification-stage log from the durable run directory', async () => {
+    await vscode.commands.executeCommand('autonomousDev.openVerificationLog', run('complete'));
+    const editor = vscode.window.activeTextEditor;
+    assert.ok(editor, 'no active text editor after opening verification log');
+    assert.equal(
+      editor.document.uri.fsPath,
+      realpathSync(path.join(fixtures.runDir('complete'), 'verification', 'unit.log'))
+    );
   });
 });

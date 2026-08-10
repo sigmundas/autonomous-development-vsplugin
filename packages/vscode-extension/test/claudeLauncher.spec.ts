@@ -6,7 +6,8 @@ import {
   AUTONOMOUS_CLAUDE_PERMISSION_MODE,
   autonomousClaudePermissionArgs,
   buildLauncherArgs,
-  withAutonomousClaudePermissions
+  withAutonomousClaudePermissions,
+  withClaudeModel
 } from '../src/config/claudeLauncher';
 
 describe('claudeLauncher argv and permission policy', () => {
@@ -20,6 +21,19 @@ describe('claudeLauncher argv and permission policy', () => {
       launcherExecutable: true
     });
     assert.deepEqual(argv, ['/usr/local/bin/claude-azure', '--profile', 'azure']);
+  });
+
+  it('adds the exact configured model as argv and leaves Default unchanged', () => {
+    const base = ['/usr/local/bin/claude'];
+    assert.deepEqual(withClaudeModel(base, undefined), base);
+    assert.deepEqual(
+      withClaudeModel(base, {
+        id: 'custom',
+        displayName: 'Custom',
+        model: 'provider/custom model;not-a-shell'
+      }),
+      ['/usr/local/bin/claude', '--model', 'provider/custom model;not-a-shell']
+    );
   });
 
   it('renders one canonical bounded permission policy for autonomous sessions', () => {
@@ -59,7 +73,10 @@ describe('claudeLauncher argv and permission policy', () => {
       'safe',
       ...autonomousClaudePermissionArgs()
     ]);
-    assert.equal(argv.some((arg) => /bypasspermissions|yolo|dangerously-skip/i.test(arg)), false);
+    assert.equal(
+      argv.some((arg) => /bypasspermissions|yolo|dangerously-skip/i.test(arg)),
+      false
+    );
   });
 
   it('rejects unrestricted permission flags supplied by a configured runtime', () => {

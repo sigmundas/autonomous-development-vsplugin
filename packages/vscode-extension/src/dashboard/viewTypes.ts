@@ -205,6 +205,11 @@ export interface DashboardConfigSnapshot {
   readonly workflowMode?: string;
   readonly maxReviewRounds?: number;
   readonly claudeRuntime?: string;
+  readonly claudeModel?: {
+    readonly id: string;
+    readonly model: string;
+    readonly displayName?: string;
+  };
   readonly phases: readonly DashboardPhaseSnapshot[];
 }
 

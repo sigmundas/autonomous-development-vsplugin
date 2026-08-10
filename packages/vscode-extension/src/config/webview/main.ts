@@ -30,7 +30,8 @@ interface ConfigView {
     launcherExists: boolean;
     launcherExecutable: boolean;
   };
-  presets: { name: string; workflowMode?: string; claudeRuntime?: string }[];
+  claudeModel?: { id: string; displayName: string; model: string };
+  presets: { name: string; workflowMode?: string; claudeRuntime?: string; claudeModel?: string }[];
   profiles: {
     id: string;
     label: string;
@@ -46,6 +47,7 @@ interface ConfigView {
     launcherExists: boolean;
     launcherExecutable: boolean;
   }[];
+  claudeModels: { id: string; displayName: string; model: string }[];
   phases: {
     phase: 'enhance' | 'plan' | 'review' | 'adversarial';
     title: string;
@@ -354,6 +356,47 @@ function renderClaude(view: ConfigView): HTMLElement {
     }
   });
   grid.appendChild(select);
+
+  grid.appendChild(
+    el('label', { for: 'claude-model-select', class: 'field-label' }, 'Claude model')
+  );
+  const modelSelect = document.createElement('select');
+  modelSelect.id = 'claude-model-select';
+  modelSelect.disabled = !view.trusted || !view.activePreset;
+  const defaultModel = document.createElement('option');
+  defaultModel.value = '';
+  defaultModel.textContent = 'Default';
+  defaultModel.selected = !view.claudeModel;
+  modelSelect.appendChild(defaultModel);
+  for (const model of view.claudeModels) {
+    const opt = document.createElement('option');
+    opt.value = model.id;
+    opt.textContent = model.displayName;
+    opt.selected = view.claudeModel?.id === model.id;
+    modelSelect.appendChild(opt);
+  }
+  modelSelect.addEventListener('change', () => {
+    saving = true;
+    vscode.postMessage({
+      type: 'setClaudeModel',
+      ...(modelSelect.value.length > 0 ? { id: modelSelect.value } : {})
+    });
+  });
+  grid.appendChild(modelSelect);
+
+  grid.appendChild(el('span', { class: 'field-label' }, 'Model configuration'));
+  grid.appendChild(
+    el(
+      'span',
+      { class: 'value muted small' },
+      'Models are user-defined under [claude_models.<id>] in config.toml. The configured value is passed to claude --model; Default passes no model argument. Runtime and model are selected independently for new runs.'
+    )
+  );
+
+  if (view.claudeModel) {
+    grid.appendChild(el('span', { class: 'field-label' }, 'Configured model'));
+    grid.appendChild(el('span', { class: 'value monospace' }, view.claudeModel.model));
+  }
 
   if (view.claudeRuntime) {
     grid.appendChild(el('span', { class: 'field-label' }, 'Runtime id'));

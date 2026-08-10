@@ -271,6 +271,37 @@ export async function configureClaudeRuntime(deps: ConfigCommandDeps): Promise<v
   }
 }
 
+export async function configureClaudeModel(deps: ConfigCommandDeps): Promise<void> {
+  if (!(await ensureReady(deps))) return;
+  try {
+    const snap = await deps.store.refresh();
+    if (!snap.effective?.activePreset) {
+      void vscode.window.showWarningMessage(
+        'Select an active preset before choosing a Claude model.'
+      );
+      return;
+    }
+    const current = snap.effective.effective.claudeModel?.id;
+    const picked = await vscode.window.showQuickPick(
+      [
+        { label: 'Default', description: 'Do not pass --model', id: undefined, picked: !current },
+        ...(snap.models?.claudeModels ?? []).map((model) => ({
+          label: model.displayName ?? model.id,
+          description: model.model,
+          id: model.id,
+          picked: model.id === current
+        }))
+      ],
+      { title: 'Configure Claude Model', placeHolder: 'Selection applies to new runs only' }
+    );
+    if (!picked) return;
+    await deps.client.setClaudeModel(picked.id);
+    await deps.store.refresh();
+  } catch (err) {
+    reportError('Configure Claude model', err);
+  }
+}
+
 export async function showEffectiveConfiguration(deps: ConfigCommandDeps): Promise<void> {
   if (!deps.client.isConfigured()) {
     void vscode.window.showWarningMessage(
@@ -331,6 +362,7 @@ export async function validateConfiguration(deps: ConfigCommandDeps): Promise<vo
 export interface PreflightSummary {
   readonly activePreset?: string;
   readonly claudeRuntime?: string;
+  readonly claudeModel?: string;
   readonly workflowMode?: string;
   readonly maxReviewRounds?: number;
   readonly phaseSummaries: readonly {
@@ -364,6 +396,12 @@ export function buildPreflightSummary(
     ...(effective.effective.claudeRuntime
       ? { claudeRuntime: effective.effective.claudeRuntime }
       : {}),
+    ...(effective.effective.claudeModel
+      ? {
+          claudeModel:
+            effective.effective.claudeModel.displayName ?? effective.effective.claudeModel.id
+        }
+      : {}),
     ...(wf.workflowMode ? { workflowMode: wf.workflowMode } : {}),
     ...(wf.maxReviewRounds !== undefined ? { maxReviewRounds: wf.maxReviewRounds } : {}),
     phaseSummaries
@@ -374,6 +412,7 @@ export function formatPreflight(summary: PreflightSummary): string {
   const lines: string[] = [];
   lines.push(`Preset: ${summary.activePreset ?? '— none —'}`);
   lines.push(`Claude: ${summary.claudeRuntime ?? '— none —'}`);
+  lines.push(`Claude model: ${summary.claudeModel ?? 'Default'}`);
   for (const phase of summary.phaseSummaries) {
     lines.push(`${phase.title}: ${phase.profileLabel} — ${phase.effortLabel}`);
   }

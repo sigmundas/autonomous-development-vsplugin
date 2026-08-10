@@ -98,6 +98,15 @@ describe('normal Start flow', () => {
     assert.doesNotMatch(launcherSource, /\.sendText\s*\(/);
   });
 
+  it('renders Claude runtime and model as independent selectors with Default', () => {
+    const extensionRoot = path.resolve(__dirname, '../..');
+    const source = readFileSync(path.join(extensionRoot, 'src/config/webview/main.ts'), 'utf8');
+    assert.match(source, /id = 'claude-select'/);
+    assert.match(source, /id = 'claude-model-select'/);
+    assert.match(source, /defaultModel\.textContent = 'Default'/);
+    assert.match(source, /type: 'setClaudeModel'/);
+  });
+
   it('keeps one primary Start action and hides compatibility aliases from the palette', () => {
     const extensionRoot = path.resolve(__dirname, '../..');
     const webviewSource = readFileSync(

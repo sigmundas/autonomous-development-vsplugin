@@ -50,6 +50,36 @@ function makeRun(snapshot: unknown, worktreePath: string): DiscoveredRun {
 }
 
 describe('buildTerminalOptions — direct launcher process (no shell interposition)', () => {
+  it('uses only the snapshotted model and keeps legacy snapshots model-free', () => {
+    const selected = makeRun(
+      {
+        claude_runtime: 'azure-claude',
+        claude_model: { id: 'sonnet', display_name: 'Sonnet', model: 'sonnet-exact' },
+        codex: {}
+      },
+      '/work/wt'
+    );
+    const selectedPlan = planResumeInClaude(
+      selected,
+      [RUNTIME],
+      undefined,
+      '/opt/controller.py',
+      '/work/wt'
+    );
+    const modelIndex = selectedPlan.launcherArgv.indexOf('--model');
+    assert.equal(selectedPlan.launcherArgv[modelIndex + 1], 'sonnet-exact');
+
+    const legacy = makeRun({ claude_runtime: 'azure-claude', codex: {} }, '/work/wt');
+    const legacyPlan = planResumeInClaude(
+      legacy,
+      [RUNTIME],
+      undefined,
+      '/opt/controller.py',
+      '/work/wt'
+    );
+    assert.equal(legacyPlan.launcherArgv.includes('--model'), false);
+  });
+
   it('uses the launcher as shellPath and passes launcher args as shellArgs', () => {
     const run = makeRun({ claude_runtime: 'azure-claude', codex: {} }, '/work/wt');
     const plan = planResumeInClaude(
@@ -84,13 +114,7 @@ describe('buildTerminalOptions — direct launcher process (no shell interpositi
 
   it('omits --plugin-dir when the controller path does not sit under scripts/', () => {
     const run = makeRun({ claude_runtime: 'azure-claude', codex: {} }, '/work/wt');
-    const plan = planResumeInClaude(
-      run,
-      [RUNTIME],
-      undefined,
-      '/opt/controller.py',
-      '/work/wt'
-    );
+    const plan = planResumeInClaude(run, [RUNTIME], undefined, '/opt/controller.py', '/work/wt');
     const options = buildTerminalOptions(plan);
     assert.deepEqual(options.shellArgs, [
       '--profile',

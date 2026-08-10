@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type {
   ClaudeRuntime,
   ClaudeRuntimeList,
+  ClaudeModelList,
   CodexProfile,
   CodexProfileList,
   ConfigValidationResult,
@@ -18,6 +19,7 @@ export interface ConfigSnapshot {
   readonly presets?: PresetList;
   readonly profiles?: CodexProfileList;
   readonly runtimes?: ClaudeRuntimeList;
+  readonly models?: ClaudeModelList;
   readonly validation?: ConfigValidationResult;
   readonly loadedAt?: string;
   readonly error?: string;
@@ -84,6 +86,7 @@ export class ConfigStore implements vscode.Disposable {
       presets?: PresetList;
       profiles?: CodexProfileList;
       runtimes?: ClaudeRuntimeList;
+      models?: ClaudeModelList;
       validation?: ConfigValidationResult;
       error?: string;
     } = {
@@ -92,15 +95,15 @@ export class ConfigStore implements vscode.Disposable {
     };
     const errors: string[] = [];
 
-    const [showRes, presetsRes, profilesRes, runtimesRes, validationRes] = await Promise.allSettled(
-      [
+    const [showRes, presetsRes, profilesRes, runtimesRes, modelsRes, validationRes] =
+      await Promise.allSettled([
         this.client.show(),
         this.client.listPresets(),
         this.client.listProfiles(),
         this.client.listClaudeRuntimes(),
+        this.client.listClaudeModels(),
         this.client.validate()
-      ]
-    );
+      ]);
 
     const record = <T>(
       res: PromiseSettledResult<T>,
@@ -125,6 +128,7 @@ export class ConfigStore implements vscode.Disposable {
     record(presetsRes, 'config-list-presets', (value) => (partial.presets = value));
     record(profilesRes, 'config-list-profiles', (value) => (partial.profiles = value));
     record(runtimesRes, 'config-list-claude-runtimes', (value) => (partial.runtimes = value));
+    record(modelsRes, 'config-list-claude-models', (value) => (partial.models = value));
     record(validationRes, 'config-validate', (value) => (partial.validation = value));
 
     if (errors.length > 0 && !partial.effective) {

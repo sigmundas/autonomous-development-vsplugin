@@ -11,7 +11,11 @@ import {
 import type { ConfigStore } from '../configStore';
 import type { OutputLog } from '../output';
 import { isWorkspaceTrusted } from '../trust';
-import { buildLauncherArgs, withAutonomousClaudePermissions } from './claudeLauncher';
+import {
+  buildLauncherArgs,
+  withAutonomousClaudePermissions,
+  withClaudeModel
+} from './claudeLauncher';
 import { type ClaudeTerminalRegistry } from './claudeTerminalRegistry';
 import { terminalIdentityForRun, type ClaudeTerminalIdentity } from './claudeTerminalIdentity';
 
@@ -53,6 +57,7 @@ export interface ResumeInClaudePlan {
   readonly run: DiscoveredRun;
   readonly runtime: ClaudeRuntime | undefined;
   readonly source: RuntimeSource;
+  readonly model?: import('@semanticmatter/core').ClaudeModel;
   readonly worktreePath: string;
   readonly pluginDir?: string;
   /** Argv the launcher will be spawned with (launcher first, then args, then --plugin-dir). */
@@ -190,8 +195,9 @@ export function planResumeInClaude(
   const pluginDir = pluginDirFromControllerPath(controllerPath);
   const instruction = RESUME_INSTRUCTION_TEMPLATE(run.runId);
   const bootstrapPrompt = autonomousResumeBootstrapPrompt(run.runId);
+  const model = snapshotFor(run)?.claudeModel;
   const launcherArgv: string[] = runtime
-    ? withAutonomousClaudePermissions(buildLauncherArgs(runtime))
+    ? withAutonomousClaudePermissions(withClaudeModel(buildLauncherArgs(runtime), model))
     : [];
   if (pluginDir && runtime) {
     launcherArgv.push('--plugin-dir', pluginDir);
@@ -206,6 +212,7 @@ export function planResumeInClaude(
     run,
     runtime,
     source,
+    ...(model !== undefined ? { model } : {}),
     worktreePath,
     ...(pluginDir !== undefined ? { pluginDir } : {}),
     launcherArgv,

@@ -348,6 +348,9 @@ export function registerCommands(deps: CommandDeps): void {
   register('autonomousDev.configureClaudeRuntime', () =>
     configCmds.configureClaudeRuntime(deps.configDeps)
   );
+  register('autonomousDev.configureClaudeModel', () =>
+    configCmds.configureClaudeModel(deps.configDeps)
+  );
   register('autonomousDev.showEffectiveConfiguration', () =>
     configCmds.showEffectiveConfiguration(deps.configDeps)
   );

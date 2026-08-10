@@ -610,6 +610,7 @@ function toDashboardConfigSnapshot(snap: RunConfigSnapshot): DashboardConfigSnap
       ? { maxReviewRounds: snap.workflow.maxReviewRounds }
       : {}),
     ...(snap.claudeRuntime !== undefined ? { claudeRuntime: snap.claudeRuntime } : {}),
+    ...(snap.claudeModel !== undefined ? { claudeModel: snap.claudeModel } : {}),
     phases
   };
 }
@@ -634,7 +635,8 @@ export function stageMetaFor(
   if (stageId === 'implementing') {
     if (!snap) return {};
     if (!snap.claudeRuntime) return {};
-    return { line: snap.claudeRuntime };
+    const model = snap.claudeModel?.displayName ?? snap.claudeModel?.id;
+    return { line: [snap.claudeRuntime, model].filter(Boolean).join(' · ') };
   }
   const phaseKey = codexPhaseForStage(stageId);
   if (!phaseKey) return {};

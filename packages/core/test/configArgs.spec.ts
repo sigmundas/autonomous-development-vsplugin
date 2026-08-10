@@ -42,15 +42,27 @@ describe('buildControllerCommand — config subcommands', () => {
     );
   });
 
-  it('config-list-profiles / -presets / -claude-runtimes all pass --json', () => {
+  it('config list commands all pass --json', () => {
     for (const sub of [
       'config-list-profiles',
       'config-list-presets',
-      'config-list-claude-runtimes'
+      'config-list-claude-runtimes',
+      'config-list-claude-models'
     ] as const) {
       const { args } = buildControllerCommand(ctx, sub);
       assert.ok(args.includes('--json'), `${sub} should include --json`);
     }
+  });
+
+  it('config-set-claude-model supports a configured id and Default', () => {
+    assert.deepEqual(
+      buildControllerCommand(ctx, 'config-set-claude-model', { name: 'sonnet' }).args.slice(-2),
+      ['config-set-claude-model', 'sonnet']
+    );
+    assert.equal(
+      buildControllerCommand(ctx, 'config-set-claude-model').args.at(-1),
+      'config-set-claude-model'
+    );
   });
 
   it('config-validate is read-only and JSON', () => {

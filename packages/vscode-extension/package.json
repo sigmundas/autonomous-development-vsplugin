@@ -82,7 +82,7 @@
     "viewsWelcome": [
       {
         "view": "autonomousDev.configuration",
-        "contents": "Configure autonomous-development before starting a run.\n\nSelect the active preset, per-phase Codex profile, reasoning effort, and Claude runtime. Selection here never rewrites your normal OpenAI Codex configuration.\n[Configure Autonomous Development](command:autonomousDev.configure)\n[Select Preset](command:autonomousDev.selectPreset)\n[Configure Claude Runtime](command:autonomousDev.configureClaudeRuntime)\n[Set Up Controller](command:autonomousDev.setupController)"
+        "contents": "Configure autonomous-development before starting a run.\n\nSelect the active preset, Claude runtime and model, per-phase Codex profile, and reasoning effort. Selection here never rewrites your normal OpenAI Codex configuration.\n[Configure Autonomous Development](command:autonomousDev.configure)\n[Select Preset](command:autonomousDev.selectPreset)\n[Configure Claude Runtime](command:autonomousDev.configureClaudeRuntime)\n[Configure Claude Model](command:autonomousDev.configureClaudeModel)\n[Set Up Controller](command:autonomousDev.setupController)"
       },
       {
         "view": "autonomousDev.activeRuns",
@@ -239,6 +239,11 @@
       {
         "command": "autonomousDev.configureClaudeRuntime",
         "title": "Configure Claude Runtime",
+        "category": "Autonomous Development"
+      },
+      {
+        "command": "autonomousDev.configureClaudeModel",
+        "title": "Configure Claude Model",
         "category": "Autonomous Development"
       },
       {
@@ -441,6 +446,10 @@
         },
         {
           "command": "autonomousDev.configureClaudeRuntime",
+          "when": "autonomousDev.trusted"
+        },
+        {
+          "command": "autonomousDev.configureClaudeModel",
           "when": "autonomousDev.trusted"
         },
         {

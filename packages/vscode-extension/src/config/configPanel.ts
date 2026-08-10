@@ -22,6 +22,7 @@ type WebviewInbound =
   | { readonly type: 'refresh' }
   | { readonly type: 'setPreset'; readonly name: string }
   | { readonly type: 'setClaudeRuntime'; readonly name: string }
+  | { readonly type: 'setClaudeModel'; readonly id?: string }
   | {
       readonly type: 'setPhase';
       readonly preset: string;
@@ -52,10 +53,16 @@ export interface ConfigView {
     readonly launcherExists: boolean;
     readonly launcherExecutable: boolean;
   };
+  readonly claudeModel?: {
+    readonly id: string;
+    readonly displayName: string;
+    readonly model: string;
+  };
   readonly presets: readonly {
     readonly name: string;
     readonly workflowMode?: string;
     readonly claudeRuntime?: string;
+    readonly claudeModel?: string;
   }[];
   readonly profiles: readonly {
     readonly id: string;
@@ -71,6 +78,11 @@ export interface ConfigView {
     readonly launcher?: string;
     readonly launcherExists: boolean;
     readonly launcherExecutable: boolean;
+  }[];
+  readonly claudeModels: readonly {
+    readonly id: string;
+    readonly displayName: string;
+    readonly model: string;
   }[];
   readonly phases: readonly {
     readonly phase: ControllerPhase;
@@ -106,6 +118,7 @@ export function toView(snap: ConfigSnapshot): ConfigView {
   const activePreset = effective?.activePreset ?? snap.presets?.activePreset;
   const runtimeName = effective?.effective.claudeRuntime;
   const runtime = snap.runtimes?.claudeRuntimes.find((r) => r.name === runtimeName);
+  const model = effective?.effective.claudeModel;
 
   const phases = CONTROLLER_PHASES.map((phase) => {
     const conf = effective?.effective.codex[phase];
@@ -153,10 +166,20 @@ export function toView(snap: ConfigSnapshot): ConfigView {
           }
         }
       : {}),
+    ...(model
+      ? {
+          claudeModel: {
+            id: model.id,
+            displayName: model.displayName ?? model.id,
+            model: model.model
+          }
+        }
+      : {}),
     presets: (snap.presets?.presets ?? []).map((p) => ({
       name: p.name,
       ...(p.workflowMode ? { workflowMode: p.workflowMode } : {}),
-      ...(p.claudeRuntime ? { claudeRuntime: p.claudeRuntime } : {})
+      ...(p.claudeRuntime ? { claudeRuntime: p.claudeRuntime } : {}),
+      ...(p.claudeModel ? { claudeModel: p.claudeModel } : {})
     })),
     profiles: (snap.profiles?.profiles ?? []).map((p) => ({
       id: p.id,
@@ -172,6 +195,11 @@ export function toView(snap: ConfigSnapshot): ConfigView {
       ...(r.launcher ? { launcher: r.launcher } : {}),
       launcherExists: r.launcherExists,
       launcherExecutable: r.launcherExecutable
+    })),
+    claudeModels: (snap.models?.claudeModels ?? []).map((m) => ({
+      id: m.id,
+      displayName: m.displayName ?? m.id,
+      model: m.model
     })),
     phases,
     reasoningEfforts: REASONING_EFFORTS.map((value) => ({
@@ -283,6 +311,9 @@ export class ConfigPanel {
       case 'setClaudeRuntime':
         await this.setClaudeRuntime(parsed.name);
         return;
+      case 'setClaudeModel':
+        await this.setClaudeModel(parsed.id);
+        return;
       case 'setPhase':
         await this.setPhase(parsed);
         return;
@@ -370,6 +401,20 @@ export class ConfigPanel {
       );
     } catch (err) {
       this.reportError('Set Claude runtime', err);
+    }
+  }
+
+  private async setClaudeModel(id: string | undefined): Promise<void> {
+    if (!isWorkspaceTrusted()) {
+      void vscode.window.showErrorMessage('Configuration mutations require a trusted workspace.');
+      return;
+    }
+    try {
+      await this.client.setClaudeModel(id);
+      await this.store.refresh();
+      this.render();
+    } catch (err) {
+      this.reportError('Set Claude model', err);
     }
   }
 

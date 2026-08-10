@@ -1,4 +1,4 @@
-import type { ClaudeRuntime } from '@semanticmatter/core';
+import type { ClaudeModel, ClaudeRuntime } from '@semanticmatter/core';
 
 /**
  * Session-wide permission policy shared by every autonomous Claude launcher.
@@ -45,9 +45,7 @@ function assertNoPermissionOverrides(argv: readonly string[]): void {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]?.toLowerCase();
     if (arg === '--permission-mode' || arg?.startsWith('--permission-mode=')) {
-      throw new Error(
-        `Refusing to override the autonomous Claude permission mode: ${argv[index]}`
-      );
+      throw new Error(`Refusing to override the autonomous Claude permission mode: ${argv[index]}`);
     }
     if (
       arg === '--dangerously-skip-permissions' ||
@@ -70,4 +68,20 @@ export function withAutonomousClaudePermissions(argv: readonly string[]): string
 /** Build the argument list for a Claude launcher terminal command. */
 export function buildLauncherArgs(runtime: ClaudeRuntime): string[] {
   return [runtime.launcher ?? '', ...runtime.args];
+}
+
+/** Append an explicitly configured model as separate, shell-safe argv elements. */
+export function withClaudeModel(argv: readonly string[], model: ClaudeModel | undefined): string[] {
+  if (!model) return [...argv];
+  const withoutLegacyModel: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--model') {
+      index += 1;
+      continue;
+    }
+    if (arg?.startsWith('--model=')) continue;
+    if (arg !== undefined) withoutLegacyModel.push(arg);
+  }
+  return [...withoutLegacyModel, '--model', model.model];
 }

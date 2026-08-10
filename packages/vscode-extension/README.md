@@ -116,14 +116,15 @@ writes state; **Refresh Runs** forces a reload.
 
 New users should start with the
 [Configuration guide](https://github.com/sigmundas/autonomous-development-vsplugin/blob/main/docs/CONFIGURATION.md),
-which covers the required files, profile naming, presets, runtimes, and the
-four Codex phases without requiring knowledge of the controller API.
+which covers the required files, profile naming, presets, Claude runtimes and
+models, and the four Codex phases without requiring knowledge of the controller
+API.
 
 The **Configuration** entry in the Autonomous Development activity-bar container
 is visible immediately when you open a workspace — even before any run has been
 created and before the state-home directory exists. Selecting it opens the
 configuration editor: presets, per-phase Codex profiles, reasoning effort, and
-the Claude runtime the extension will launch for you.
+the independently selected Claude runtime and model used for new runs.
 
 Everything the editor changes goes through the controller's JSON contract:
 
@@ -140,8 +141,11 @@ Everything the editor changes goes through the controller's JSON contract:
   `config-set-claude-runtime` writes the choice onto the active preset. The
   extension never rewrites Claude credentials or provider API keys — it only
   records which pre-installed launcher script to spawn.
+- `config-list-claude-models` populates the model dropdown from user-defined
+  `[claude_models.<id>]` entries; `config-set-claude-model` records the stable id
+  on the active preset. **Default** omits `--model` instead of guessing a model.
 
-Selecting a preset or Claude runtime changes what **new** runs use. Existing
+Selecting a preset, Claude runtime, or Claude model changes what **new** runs use. Existing
 runs continue to execute with the configuration snapshot the controller pinned
 into `run-state.json` at init time, and the dashboard displays that snapshot
 read-only so you can see exactly what the run was created with.
@@ -159,8 +163,9 @@ autonomous permission policy. The command fails clearly when:
 - the launcher path is missing, or
 - the launcher is not executable.
 
-The launcher owns the Claude provider, deployment/model, and reasoning effort;
-the extension does not edit those directly. The extension submits the selected
+The launcher owns the Claude provider environment and authentication. The
+separately configured Claude model is passed as an argv-safe `--model` argument;
+when Default is selected, that argument is omitted. The extension submits the selected
 autonomous skill as Claude's initial prompt. That skill—not the extension—
 initializes and drives the controller run. The older
 `autonomousDev.openAutonomousClaude` and `autonomousDev.launchClaude` command IDs

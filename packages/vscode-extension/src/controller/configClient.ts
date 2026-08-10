@@ -1,10 +1,12 @@
 import {
   parseClaudeRuntimeList,
+  parseClaudeModelList,
   parseConfigValidation,
   parseEffectiveConfiguration,
   parsePresetList,
   parseProfileList,
   type ClaudeRuntimeList,
+  type ClaudeModelList,
   type CodexProfileList,
   type ConfigValidationResult,
   type ControllerConfigResponse,
@@ -108,6 +110,11 @@ export class ConfigClient {
     return this.unwrap('config-list-claude-runtimes', parseClaudeRuntimeList(raw));
   }
 
+  async listClaudeModels(): Promise<ClaudeModelList> {
+    const raw = await this.runJson('config-list-claude-models');
+    return this.unwrap('config-list-claude-models', parseClaudeModelList(raw));
+  }
+
   async setActivePreset(name: string): Promise<void> {
     if (name.length === 0) {
       throw new ControllerError('setActivePreset requires a non-empty preset name.');
@@ -120,6 +127,12 @@ export class ConfigClient {
       throw new ControllerError('setClaudeRuntime requires a non-empty runtime name.');
     }
     await this.service.executeGlobal('config-set-claude-runtime', { name });
+  }
+
+  async setClaudeModel(name?: string): Promise<void> {
+    await this.service.executeGlobal('config-set-claude-model', {
+      ...(name !== undefined ? { name } : {})
+    });
   }
 
   async setPhase(args: {

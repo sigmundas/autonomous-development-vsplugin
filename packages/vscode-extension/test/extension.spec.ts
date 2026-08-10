@@ -38,6 +38,7 @@ const CONTRIBUTED_COMMANDS = [
   'configureReviewAgent',
   'configureAdversarialReviewer',
   'configureClaudeRuntime',
+  'configureClaudeModel',
   'showEffectiveConfiguration',
   'validateConfiguration',
   'launchClaude',

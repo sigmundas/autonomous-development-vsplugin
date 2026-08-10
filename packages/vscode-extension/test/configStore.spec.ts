@@ -60,12 +60,14 @@ describe('global configuration outside a repository', () => {
           effective: {
             workflow: { workflowMode: 'standard', maxReviewRounds: 3 },
             claudeRuntime: 'local',
+            claudeModel: { id: 'custom', displayName: 'Custom Model', model: 'custom/exact' },
             codex: {}
           },
           origin: {},
           warnings: [],
           presets: ['global'],
-          claudeRuntimes: ['local']
+          claudeRuntimes: ['local'],
+          claudeModels: ['custom']
         };
       },
       listPresets: async () => {
@@ -98,6 +100,13 @@ describe('global configuration outside a repository', () => {
           ]
         };
       },
+      listClaudeModels: async () => {
+        calls.push('models');
+        return {
+          configPath: '/state/config.toml',
+          claudeModels: [{ id: 'custom', displayName: 'Custom Model', model: 'custom/exact' }]
+        };
+      },
       validate: async () => {
         calls.push('validate');
         return {
@@ -114,11 +123,20 @@ describe('global configuration outside a repository', () => {
     const snapshot = await store.refresh();
     const view = toView(snapshot);
 
-    assert.deepEqual(calls.sort(), ['presets', 'profiles', 'runtimes', 'show', 'validate']);
+    assert.deepEqual(calls.sort(), [
+      'models',
+      'presets',
+      'profiles',
+      'runtimes',
+      'show',
+      'validate'
+    ]);
     assert.equal(view.activePreset, 'global');
     assert.equal(view.presets[0]?.name, 'global');
     assert.equal(view.profiles[0]?.id, 'azure');
     assert.equal(view.claudeRuntimes[0]?.name, 'local');
+    assert.equal(view.claudeModels[0]?.displayName, 'Custom Model');
+    assert.equal(view.claudeModel?.model, 'custom/exact');
     store.dispose();
   });
 });

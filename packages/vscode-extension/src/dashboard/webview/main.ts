@@ -830,6 +830,10 @@ function renderConfigSnapshot(view: DashboardView): HTMLElement | null {
   const rows: Child[] = [
     kv('Preset used (this run)', snap.preset ?? '—'),
     kv('Claude runtime (this run)', snap.claudeRuntime ?? '—'),
+    kv(
+      'Claude model requested (this run)',
+      snap.claudeModel?.displayName ?? snap.claudeModel?.id ?? 'Default'
+    ),
     kv('Workflow mode (this run)', snap.workflowMode ?? '—'),
     kv(
       'Maximum review rounds (this run)',

@@ -133,10 +133,14 @@ describe('stageMetaFor — concrete Codex telemetry wins over snapshot', () => {
 describe('stageMetaFor — Claude runtime on Implementing', () => {
   it('shows the snapshotted Claude runtime name for implementing', () => {
     const run = makeRun({
-      config_snapshot: { codex: {}, claude_runtime: 'foundry-claude' }
+      config_snapshot: {
+        codex: {},
+        claude_runtime: 'foundry-claude',
+        claude_model: { id: 'sonnet', display_name: 'Sonnet 4.6', model: 'exact' }
+      }
     });
     const meta = stageMetaFor('implementing', run, []);
-    assert.equal(meta.line, 'foundry-claude');
+    assert.equal(meta.line, 'foundry-claude · Sonnet 4.6');
   });
   it('does not invent a runtime when snapshot omits claude_runtime', () => {
     const run = makeRun({ config_snapshot: { codex: {} } });

@@ -25,9 +25,11 @@ export type ControllerSubcommand =
   | 'config-list-profiles'
   | 'config-list-presets'
   | 'config-list-claude-runtimes'
+  | 'config-list-claude-models'
   | 'config-set-active-preset'
   | 'config-set-phase'
-  | 'config-set-claude-runtime';
+  | 'config-set-claude-runtime'
+  | 'config-set-claude-model';
 
 /** Workflow rigor modes accepted by `controller.py init --mode`. */
 export type ControllerInitMode = 'auto' | 'lean' | 'standard' | 'rigorous';
@@ -53,7 +55,8 @@ const MUTATING: ReadonlySet<ControllerSubcommand> = new Set([
   'archive-run',
   'config-set-active-preset',
   'config-set-phase',
-  'config-set-claude-runtime'
+  'config-set-claude-runtime',
+  'config-set-claude-model'
 ]);
 
 /** Commands that must be scoped to an explicit --run-id. */
@@ -79,9 +82,11 @@ const CONFIG_SUBCOMMANDS: ReadonlySet<ControllerSubcommand> = new Set([
   'config-list-profiles',
   'config-list-presets',
   'config-list-claude-runtimes',
+  'config-list-claude-models',
   'config-set-active-preset',
   'config-set-phase',
-  'config-set-claude-runtime'
+  'config-set-claude-runtime',
+  'config-set-claude-model'
 ]);
 
 export function isMutatingSubcommand(sub: ControllerSubcommand): boolean {
@@ -242,11 +247,15 @@ export function buildControllerCommand(
     case 'config-list-profiles':
     case 'config-list-presets':
     case 'config-list-claude-runtimes':
+    case 'config-list-claude-models':
       args.push('--json');
       break;
     case 'config-set-active-preset':
     case 'config-set-claude-runtime':
       args.push(options.name as string);
+      break;
+    case 'config-set-claude-model':
+      if (options.name) args.push(options.name);
       break;
     case 'config-set-phase':
       args.push('--preset', options.configPreset as string);

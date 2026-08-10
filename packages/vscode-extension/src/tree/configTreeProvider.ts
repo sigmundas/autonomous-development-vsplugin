@@ -131,6 +131,21 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<ConfigTreeNod
       ...(runtimeInvalid ? { warning: true } : {})
     });
 
+    const model = effective?.effective.claudeModel;
+    nodes.push({
+      kind: 'claude',
+      label: 'Claude model (for new runs)',
+      description: model?.displayName ?? model?.id ?? 'Default',
+      tooltip: model
+        ? `Configured model: ${model.model}. This requested model applies to NEW runs only.`
+        : 'Default: Claude Code chooses the model; no --model argument is passed.',
+      icon: new vscode.ThemeIcon('symbol-parameter'),
+      command: {
+        command: 'autonomousDev.configureClaudeModel',
+        title: 'Configure Claude Model'
+      }
+    });
+
     if (effective) {
       for (const phase of CONTROLLER_PHASES) {
         nodes.push(phaseNode(phase, snap));

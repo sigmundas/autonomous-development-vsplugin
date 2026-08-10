@@ -16,9 +16,10 @@ pieces for each new autonomous run.
    `CODEX_HOME` is not set. Name each file `<profile-id>.config.toml`.
 4. In Autonomous Development's `config.toml`, define a Claude runtime when you
    want VS Code to start Claude for new runs. Its launcher must be an existing,
-   executable file.
-5. Define a preset that names the workflow mode, Claude runtime, and Codex
-   settings for the four phases.
+   executable file. Optionally define the Claude models offered by your account
+   or provider.
+5. Define a preset that names the workflow mode, Claude runtime, optional Claude
+   model, and Codex settings for the four phases.
 6. Assign a Codex profile and reasoning effort to Enhance, Planning, Review,
    and Adversarial review in the preset.
 7. Return to the VS Code Configuration page, click **Refresh**, and select the
@@ -47,7 +48,8 @@ Unless a state-home or config-path override is active, the defaults are:
 An explicit controller config path can also change the location. The resolved
 path in the Configuration page accounts for these choices.
 
-This file contains workflow settings, presets, and Claude-runtime definitions.
+This file contains workflow settings, presets, Claude-runtime definitions, and
+Claude-model definitions.
 Do not put API keys, tokens, or passwords in it.
 
 ### Codex profiles
@@ -92,6 +94,7 @@ A preset is a named collection of defaults for a new autonomous run. It groups:
 
 - the workflow mode (`auto`, `lean`, `standard`, or `rigorous`);
 - the Claude runtime;
+- the optional Claude model;
 - the Codex profile used for each phase; and
 - the reasoning effort used for each phase.
 
@@ -111,6 +114,39 @@ The runtime definition identifies how to start Claude; credentials and
 provider-specific secrets remain in that Claude setup, outside Autonomous
 Development's config file. Changing the selected runtime affects new sessions
 only.
+
+## What is a Claude model?
+
+A Claude model is the model requested for a Claude session, independently of
+the runtime that supplies its launcher, authentication, and provider
+environment. Define selectable models under `[claude_models.<id>]` with a
+friendly `display_name` and the exact value your Claude Code installation
+accepts for `claude --model`:
+
+```toml
+[claude_models.sonnet]
+display_name = "Sonnet"
+model = "sonnet"
+
+[claude_models.opus]
+display_name = "Opus"
+model = "opus"
+
+[claude_models.sonnet46-foundry]
+display_name = "Sonnet 4.6 · 1M"
+model = "claude-sonnet-4-6"
+
+[claude_models.opus48-foundry]
+display_name = "Opus 4.8 · 1M"
+model = "claude-opus-4-8"
+```
+
+These entries are examples, not a hardcoded catalog. Use the precise model
+values supported by your account/provider, including custom names when needed.
+Set `claude_model = "<id>"` on a preset to select one. Choosing **Default** in
+VS Code removes that preset setting and launches Claude without `--model`.
+Model changes affect new runs only; an existing run resumes with its saved
+model selection.
 
 ## What the Codex phases do
 
@@ -139,6 +175,7 @@ workflow_mode = "standard"
 [presets.azure-codex-anthropic]
 workflow_mode = "standard"
 claude_runtime = "anthropic"
+claude_model = "sonnet"
 
 [presets.azure-codex-anthropic.codex.enhance]
 profile = "azure-gpt5p6-sol"
@@ -159,6 +196,22 @@ reasoning_effort = "xhigh"
 [claude_runtimes.anthropic]
 display_name = "Anthropic · Claude"
 launcher = "/Users/yourname/bin/claude-anthropic-autonomous"
+
+[claude_models.sonnet]
+display_name = "Sonnet"
+model = "sonnet"
+
+[claude_models.opus]
+display_name = "Opus"
+model = "opus"
+
+[claude_models.sonnet46-foundry]
+display_name = "Sonnet 4.6 · 1M"
+model = "claude-sonnet-4-6"
+
+[claude_models.opus48-foundry]
+display_name = "Opus 4.8 · 1M"
+model = "claude-opus-4-8"
 ```
 
 The matching profile file is:
@@ -185,6 +238,8 @@ Common setup problems are:
 - **Profile is invalid:** open that profile and fix its TOML syntax.
 - **Launcher is missing or not executable:** correct the absolute path and make
   the launcher executable before starting a session.
+- **Model does not appear:** add a `[claude_models.<id>]` definition, save the
+  file, and click **Refresh**.
 - **Preset does not appear:** define it in Autonomous Development's
   `config.toml`, save the file, and click **Refresh**.
 

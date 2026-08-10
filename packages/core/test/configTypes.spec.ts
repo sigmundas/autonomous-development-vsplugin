@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   parseClaudeRuntimeList,
+  parseClaudeModelList,
   parseConfigValidation,
   parseEffectiveConfiguration,
   parsePresetList,
@@ -24,7 +25,8 @@ describe('parseEffectiveConfiguration (config-show contract)', () => {
           plan: { profile: 'azure-gpt5p6-sol', reasoning_effort: 'high' },
           review: { profile: 'azure-gpt5p6-sol', reasoning_effort: 'xhigh' }
         },
-        claude_runtime: 'azure-claude'
+        claude_runtime: 'azure-claude',
+        claude_model: { id: 'sonnet', display_name: 'Sonnet', model: 'sonnet-exact' }
       },
       presets: ['azure-autonomous', 'openai-anthropic'],
       claude_runtimes: ['azure-claude', 'anthropic-claude'],
@@ -59,6 +61,22 @@ describe('parseEffectiveConfiguration (config-show contract)', () => {
   it('rejects a non-object payload', () => {
     const parsed = parseEffectiveConfiguration('nope');
     assert.equal(parsed.ok, false);
+  });
+});
+
+describe('parseClaudeModelList', () => {
+  it('accepts user-defined model ids and exact CLI values', () => {
+    const parsed = parseClaudeModelList({
+      claude_models: [{ id: 'custom-opus', display_name: 'My Opus', model: 'provider/custom-opus' }]
+    });
+    assert.equal(parsed.ok, true);
+    if (parsed.ok) {
+      assert.deepEqual(parsed.value.claudeModels[0], {
+        id: 'custom-opus',
+        displayName: 'My Opus',
+        model: 'provider/custom-opus'
+      });
+    }
   });
 });
 
@@ -187,7 +205,8 @@ describe('parseRunConfigSnapshot', () => {
         codex: {
           plan: { profile: 'azure-gpt5p6-sol', reasoning_effort: 'high', model: 'gpt-init' }
         },
-        claude_runtime: 'azure-claude'
+        claude_runtime: 'azure-claude',
+        claude_model: { id: 'sonnet', display_name: 'Sonnet', model: 'sonnet-exact' }
       }
     });
     assert.ok(snap, 'snapshot should be parsed');
@@ -197,6 +216,7 @@ describe('parseRunConfigSnapshot', () => {
       assert.equal(snap.codex.plan?.profile, 'azure-gpt5p6-sol');
       assert.equal(snap.codex.plan?.reasoningEffort, 'high');
       assert.equal(snap.claudeRuntime, 'azure-claude');
+      assert.equal(snap.claudeModel?.model, 'sonnet-exact');
     }
   });
 

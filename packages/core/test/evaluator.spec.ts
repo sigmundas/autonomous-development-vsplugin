@@ -84,7 +84,28 @@ describe('evaluateWorkflow (integration)', () => {
 
   it('computes review budget (consumed/remaining)', () => {
     const model = evaluate(build({ max_review_rounds: 3, review_round: 2 }));
-    assert.deepEqual(model.reviewBudget, { max: 3, consumed: 2, remaining: 1 });
+    assert.deepEqual(model.reviewBudget, {
+      originalMax: 3,
+      max: 3,
+      consumed: 2,
+      remaining: 1
+    });
+  });
+
+  it('adds only explicit per-run review authorizations to the effective budget', () => {
+    const model = evaluate(
+      build({
+        max_review_rounds: 3,
+        review_round: 3,
+        review_round_authorizations: [{ additional_rounds: 1 }]
+      })
+    );
+    assert.deepEqual(model.reviewBudget, {
+      originalMax: 3,
+      max: 4,
+      consumed: 3,
+      remaining: 1
+    });
   });
 
   it('falls back to the run-state cached verdict for next-action when the review file is unreadable', () => {
@@ -107,7 +128,13 @@ describe('evaluateWorkflow (integration)', () => {
     const model = evaluate(build({ status: 'blocked', phase: 'review-budget-exhausted' }));
     assert.equal(model.isTerminal, true);
     assert.equal(model.blockingReason, 'Review-round budget exhausted');
-    assert.equal(model.recommendedNextAction.code, 'blocked');
+    assert.equal(model.recommendedNextAction.code, 'continue-blocked');
+  });
+
+  it('makes active review-budget exhaustion recoverable by explicit authorization', () => {
+    const model = evaluate(build({ status: 'active', phase: 'review-budget-exhausted' }));
+    assert.equal(model.isTerminal, false);
+    assert.equal(model.recommendedNextAction.code, 'allow-review');
   });
 
   it('surfaces required adversarial review state', () => {

@@ -442,6 +442,7 @@ describe('resumeRunInClaude — terminal reuse and concurrency', () => {
     assert.strictEqual(registry.get(terminalIdentityForRun(run)), replacement);
     assert.ok(options);
     assert.equal(options.cwd, '/work/repo');
+    assert.equal(options.hideFromUser, true);
     assert.equal((options.env as Record<string, string>)['AUTODEV_RUN_ID'], run.runId);
     assert.equal(options.shellArgs?.at(-1), `${AUTONOMOUS_RESUME_SKILL} ${run.runId}`);
     assert.equal(options.shellArgs?.at(-2), plan.instruction);

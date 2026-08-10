@@ -10,6 +10,7 @@ import {
   AUTONOMOUS_CLAUDE_TERMINAL_ENV_MARKER,
   AUTONOMOUS_CLAUDE_TERMINAL_NAME_PREFIX,
   buildOpenAutonomousClaudeTerminalOptions,
+  newRunBootstrapPrompt,
   openAutonomousClaudeInWorkspace,
   planOpenAutonomousClaude
 } from '../src/config/openAutonomousClaude';
@@ -92,6 +93,34 @@ describe('openAutonomousClaude — terminal name identity', () => {
 });
 
 describe('openAutonomousClaude — plan construction', () => {
+  it('maps each selected run mode to the existing autonomous skill', () => {
+    assert.equal(
+      newRunBootstrapPrompt({ mode: 'feature', feature: 'Build a dashboard' }),
+      '/autonomous-development:autonomous-feature Build a dashboard'
+    );
+    assert.equal(
+      newRunBootstrapPrompt({ mode: 'current', feature: 'Fix timeline state' }),
+      '/autonomous-development:autonomous-current Fix timeline state'
+    );
+    assert.equal(
+      newRunBootstrapPrompt({ mode: 'main', feature: 'Update docs' }),
+      '/autonomous-development:autonomous-main Update docs'
+    );
+  });
+
+  it('appends the selected skill prompt without duplicating initialization logic', () => {
+    const plan = planOpenAutonomousClaude(
+      RUNTIME,
+      '/work/repo',
+      '/opt/autodev/scripts/controller.py',
+      { mode: 'current', feature: 'Clarify run state' }
+    );
+    assert.equal(
+      plan.launcherArgv.at(-1),
+      '/autonomous-development:autonomous-current Clarify run state'
+    );
+  });
+
   it('cwd is threaded through as the terminal cwd', () => {
     const plan = planOpenAutonomousClaude(
       RUNTIME,
@@ -312,6 +341,30 @@ describe('openAutonomousClaudeInWorkspace — spawn behaviour', () => {
     ]);
     assert.equal(opts.hideFromUser, true);
     assert.equal(fake.shownCount, 1, 'the terminal must be revealed via show()');
+  });
+
+  it('submits the selected mode skill as the initial interactive prompt', async () => {
+    const captured: vscode.TerminalOptions[] = [];
+    const store = makeFakeConfigStore({ runtimeName: RUNTIME.name, runtime: RUNTIME });
+    await openAutonomousClaudeInWorkspace(
+      '/work/sample-repo',
+      {
+        store: store as never,
+        log: makeSilentLog() as never,
+        getControllerPath: () => '/opt/autodev/scripts/controller.py',
+        createTerminal: (opts) => {
+          captured.push(opts);
+          return makeFakeTerminal().terminal;
+        },
+        showInfo: () => Promise.resolve(undefined),
+        showError: () => Promise.resolve(undefined)
+      },
+      { mode: 'main', feature: 'Improve the timeline' }
+    );
+    assert.equal(
+      (captured[0]?.shellArgs as string[] | undefined)?.at(-1),
+      '/autonomous-development:autonomous-main Improve the timeline'
+    );
   });
 
   it('tells the user which autonomous skills can initialize the run', async () => {

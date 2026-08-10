@@ -43,6 +43,7 @@ export interface EvaluatorInput {
 }
 
 export interface ReviewBudget {
+  readonly originalMax: number;
   readonly max: number;
   readonly consumed: number;
   readonly remaining: number;
@@ -154,6 +155,10 @@ function blockingReasonFor(state: RunState): string | undefined {
   }
   if (state.phase === 'review-budget-exhausted') {
     return 'Review-round budget exhausted';
+  }
+  const recorded = state.raw['blocking_reason'];
+  if (typeof recorded === 'string' && recorded.trim().length > 0) {
+    return recorded;
   }
   return state.phase && state.phase !== 'blocked' ? state.phase : 'Run is blocked';
 }
@@ -282,6 +287,7 @@ export function evaluateWorkflow(input: EvaluatorInput): WorkflowModel {
 
   const recommendedNextAction = recommendNextAction({
     status: state.status,
+    phase: state.phase,
     hasEnhance: state.artifacts.enhance !== undefined,
     acceptedSpecExists: input.acceptedSpecExists,
     acceptedPlanExists: input.acceptedPlanExists,
@@ -291,6 +297,7 @@ export function evaluateWorkflow(input: EvaluatorInput): WorkflowModel {
     ...(effectiveReviewVerdict !== undefined ? { effectiveReviewVerdict } : {}),
     ...(state.effectiveMode !== undefined ? { effectiveMode: state.effectiveMode } : {}),
     cumulativeUnresolvedSevere: cumulativeSevere,
+    blockingAcceptanceCriteria: acceptanceCriteriaModel.blockingCount > 0,
     requiresAdversarial,
     hasAdversarial,
     ...(latestAdversarialVerdict !== undefined ? { latestAdversarialVerdict } : {})
@@ -306,6 +313,10 @@ export function evaluateWorkflow(input: EvaluatorInput): WorkflowModel {
     verificationPassed: verification.passed,
     hasReviews,
     reviewPassed: isPass(effectiveReviewVerdict),
+    ...(latestRef?.round !== undefined ? { latestReviewRound: latestRef.round } : {}),
+    ...(effectiveReviewVerdict !== undefined
+      ? { latestReviewVerdict: effectiveReviewVerdict }
+      : {}),
     severeFindingCount,
     requiresAdversarial,
     hasAdversarial,
@@ -316,9 +327,13 @@ export function evaluateWorkflow(input: EvaluatorInput): WorkflowModel {
   const stages = deriveStages(stageFacts);
 
   const reviewBudget: ReviewBudget = {
-    max: state.maxReviewRounds,
+    originalMax: state.maxReviewRounds,
+    max: state.maxReviewRounds + (state.additionalReviewRounds ?? 0),
     consumed: state.reviewRound,
-    remaining: Math.max(0, state.maxReviewRounds - state.reviewRound)
+    remaining: Math.max(
+      0,
+      state.maxReviewRounds + (state.additionalReviewRounds ?? 0) - state.reviewRound
+    )
   };
 
   const review: ReviewSummaryModel = {

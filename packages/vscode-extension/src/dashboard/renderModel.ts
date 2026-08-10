@@ -225,7 +225,8 @@ function cumulativeFindingsView(
       ...(f.origin !== undefined ? { origin: f.origin } : {}),
       blocking: blockingSet.has(f),
       ...(f.resolvedAtRound !== undefined ? { resolvedAtRound: f.resolvedAtRound } : {}),
-      ...(f.resolutionSource !== undefined ? { resolutionSource: f.resolutionSource } : {})
+      ...(f.resolutionSource !== undefined ? { resolutionSource: f.resolutionSource } : {}),
+      ...(f.assessmentState !== undefined ? { assessmentState: f.assessmentState } : {})
     }))
   };
 }
@@ -245,6 +246,7 @@ function acceptanceCriteriaView(
       ...(c.status !== undefined ? { status: c.status } : {}),
       ...(c.evidence !== undefined ? { evidence: c.evidence } : {}),
       ...(c.round !== undefined ? { round: c.round } : {}),
+      ...(c.assessmentState !== undefined ? { assessmentState: c.assessmentState } : {}),
       blocking: blockingSet.has(c)
     }))
   };
@@ -268,6 +270,8 @@ function codexUsageView(model: CodexUsageModel): DashboardCodexUsage {
 export interface ToDashboardViewOptions {
   /** True when the extension is currently tracking a Claude terminal for this run. */
   readonly claudeTerminalOpen?: boolean;
+  /** Child run linked to this parent, derived from discovery without parent mutation. */
+  readonly continuedByRunId?: string;
 }
 
 /** Build the dashboard view for a run. Returns a diagnostics-only shell when unparsed. */
@@ -300,7 +304,16 @@ export function toDashboardView(
       claudeTerminalOpen,
       repository: { id: run.repoId },
       stages: [],
-      reviewBudget: { max: 0, consumed: 0, remaining: 0 },
+      reviewBudget: { originalMax: 0, max: 0, consumed: 0, remaining: 0 },
+      recovery: {
+        reviewBudgetExhausted: false,
+        awaitingHumanDecision: false,
+        workPreserved: false,
+        verificationPreserved: false,
+        ...(options.continuedByRunId !== undefined
+          ? { continuedByRunId: options.continuedByRunId }
+          : {})
+      },
       verification: {
         hasChecks: false,
         passed: false,
@@ -437,6 +450,19 @@ export function toDashboardView(
       };
     }),
     reviewBudget: model.reviewBudget,
+    recovery: {
+      reviewBudgetExhausted: state.phase === 'review-budget-exhausted',
+      awaitingHumanDecision: state.awaitingHumanDecision === true,
+      workPreserved:
+        state.status === 'blocked' ||
+        state.phase === 'review-budget-exhausted' ||
+        state.parentRunId !== undefined,
+      verificationPreserved: model.verification.hasChecks,
+      ...(state.parentRunId !== undefined ? { parentRunId: state.parentRunId } : {}),
+      ...(options.continuedByRunId !== undefined
+        ? { continuedByRunId: options.continuedByRunId }
+        : {})
+    },
     verification: {
       hasChecks: model.verification.hasChecks,
       passed: model.verification.passed,
@@ -558,7 +584,9 @@ export function stageMetaFor(
   if (!phaseKey) return {};
   const conf = snap?.codex[phaseKey];
   const telemetry = codexRuns.find((r) => r.phase === phaseKey);
-  const model = telemetry?.model ?? conf?.model;
+  const reportedModel = meaningfulTelemetryValue(telemetry?.model);
+  const snapshotModel = meaningfulTelemetryValue(conf?.model);
+  const model = reportedModel ?? snapshotModel;
   const effort = telemetry?.reasoningEffort ?? conf?.reasoningEffort;
   const profileId = conf?.profile;
   const parts: string[] = [];
@@ -571,6 +599,14 @@ export function stageMetaFor(
   const line = parts.join(' · ');
   const tooltip = profileId ? `Profile: ${profileId}` : undefined;
   return tooltip !== undefined ? { line, tooltip } : { line };
+}
+
+function meaningfulTelemetryValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.toLowerCase() === '(default)' || trimmed.toLowerCase() === 'default') {
+    return undefined;
+  }
+  return trimmed;
 }
 
 function codexPhaseForStage(stageId: string): string | undefined {
@@ -628,10 +664,7 @@ const PRE_IMPLEMENTATION_COMPLETE_PHASES: ReadonlySet<string> = new Set([
  * Only these count for the "controller state has transitioned to verification"
  * condition of the Verification-active rule.
  */
-const VERIFICATION_PHASES: ReadonlySet<string> = new Set([
-  'verification',
-  'verification-failed'
-]);
+const VERIFICATION_PHASES: ReadonlySet<string> = new Set(['verification', 'verification-failed']);
 
 export interface ImplementerRefinementFacts {
   /** True iff an extension-managed Claude terminal is currently alive for the run. */
@@ -672,11 +705,7 @@ export function refineStagesForImplementerRunning(
 ): WorkflowStage[] {
   // Terminal statuses: no refinement — the canonical stages already encode the
   // right story (complete / blocked / cancelled / archived).
-  if (
-    facts.status === 'complete' ||
-    facts.status === 'cancelled' ||
-    facts.status === 'archived'
-  ) {
+  if (facts.status === 'complete' || facts.status === 'cancelled' || facts.status === 'archived') {
     return [...stages];
   }
 

@@ -112,6 +112,22 @@ describe('stageMetaFor — concrete Codex telemetry wins over snapshot', () => {
     // Profile id is still available as tooltip.
     assert.equal(meta.tooltip, 'Profile: azure-gpt5p6-sol');
   });
+
+  it('treats (default) telemetry as non-informative and falls back to profile id', () => {
+    const run = makeRun({
+      config_snapshot: {
+        codex: {
+          review: { profile: 'azure-gpt5p6-sol', reasoning_effort: 'high' }
+        }
+      }
+    });
+    const codexRuns: CodexRun[] = [
+      { phase: 'review', model: '(default)', reasoningEffort: 'high' }
+    ];
+    const meta = stageMetaFor('independent-review', run, codexRuns);
+    assert.equal(meta.line, 'azure-gpt5p6-sol · High');
+    assert.equal(meta.tooltip, 'Profile: azure-gpt5p6-sol');
+  });
 });
 
 describe('stageMetaFor — Claude runtime on Implementing', () => {

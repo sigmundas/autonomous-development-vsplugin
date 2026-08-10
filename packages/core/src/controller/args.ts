@@ -15,6 +15,8 @@ export type ControllerSubcommand =
   | 'status'
   | 'evaluate'
   | 'accept-drift'
+  | 'authorize-review'
+  | 'continue-run'
   | 'cancel'
   | 'archive-run'
   | 'config-show'
@@ -34,11 +36,17 @@ export type ControllerPhase = 'enhance' | 'plan' | 'review' | 'adversarial';
 
 /** Reasoning-effort levels accepted by `config-set-phase --reasoning-effort`. */
 export type ControllerReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type ControllerRecoveryIntent =
+  | 'allow-one-more-review'
+  | 'resume-adversarial'
+  | 'continue-blocked';
 
 const MUTATING: ReadonlySet<ControllerSubcommand> = new Set([
   'init',
   'evaluate',
   'accept-drift',
+  'authorize-review',
+  'continue-run',
   'cancel',
   'archive-run',
   'config-set-active-preset',
@@ -52,6 +60,8 @@ const RUN_SCOPED: ReadonlySet<ControllerSubcommand> = new Set([
   'status',
   'evaluate',
   'accept-drift',
+  'authorize-review',
+  'continue-run',
   'cancel',
   'archive-run'
 ]);
@@ -98,6 +108,8 @@ export interface ControllerOptions {
   readonly all?: boolean;
   /** cancel: optional reason. */
   readonly reason?: string;
+  /** continue-run: recovery action carried into the linked child. */
+  readonly recoveryIntent?: ControllerRecoveryIntent;
   /** Append --json (list-runs/show-run/status). Config-* commands always emit JSON. */
   readonly json?: boolean;
   /** init: required feature description (--feature). */
@@ -204,6 +216,9 @@ export function buildControllerCommand(
       break;
     case 'cancel':
       if (options.reason && options.reason.length > 0) args.push('--reason', options.reason);
+      break;
+    case 'continue-run':
+      if (options.recoveryIntent) args.push('--intent', options.recoveryIntent);
       break;
     case 'config-show':
     case 'config-validate':

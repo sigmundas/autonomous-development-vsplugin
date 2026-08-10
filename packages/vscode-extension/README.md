@@ -31,8 +31,9 @@ even when a run was started outside it.
 - Open any artifact in a normal editor; **compare** original↔accepted spec and
   proposed↔accepted plan in the **native diff editor**; click a finding to jump to
   its source line.
-- **Start Autonomous Run** launches one configured Claude session with bounded
-  autonomous permissions; the selected skill owns controller initialization.
+- **New Run…** guides you through repository, checkout mode, and feature
+  description, then launches one configured Claude session with bounded
+  autonomous permissions. The selected skill still owns controller initialization.
 - **Safe controller actions** (evaluate gates, accept drift, cancel, archive)
   run via argument arrays (never a shell), confirm before mutating, and are
   disabled in untrusted workspaces.
@@ -86,13 +87,12 @@ python3 /path/to/autonomous-development/scripts/controller.py \
   init --feature "Describe the feature here" --mode auto
 ```
 
-…or, once the folder is open in VS Code, run **Start Autonomous Run** from the
-Active Runs view title (the `+` button) or the command palette. The extension
-opens exactly one Claude session with the selected runtime and bounded
-autonomous permission policy. Invoke `autonomous-feature`,
-`autonomous-current`, or `autonomous-main` in that session and provide the
-feature description. The selected skill owns `controller.py init` and stamps
-`run-state.json` as it begins; the extension does not initialize a run itself.
+…or, once the folder is open in VS Code, select **New run…** at the top of Active
+Runs (or from the command palette). Choose isolated feature worktree, current
+branch, or main, then enter the feature description. The extension opens one
+Claude session and submits `autonomous-feature`, `autonomous-current`, or
+`autonomous-main` for the chosen mode. The selected skill owns `controller.py
+init` and stamps `run-state.json`; the extension does not initialize a run itself.
 
 **3. Open the same folder in VS Code** (File → Open Folder → `my-project`). It must
 be the repository the controller ran in — not a parent or subfolder.
@@ -114,6 +114,11 @@ writes state; **Refresh Runs** forces a reload.
 
 ## Pre-run configuration
 
+New users should start with the
+[Configuration guide](https://github.com/sigmundas/autonomous-development-vsplugin/blob/main/docs/CONFIGURATION.md),
+which covers the required files, profile naming, presets, runtimes, and the
+four Codex phases without requiring knowledge of the controller API.
+
 The **Configuration** entry in the Autonomous Development activity-bar container
 is visible immediately when you open a workspace — even before any run has been
 created and before the state-home directory exists. Selecting it opens the
@@ -129,7 +134,8 @@ Everything the editor changes goes through the controller's JSON contract:
   `config-set-active-preset`, then reloads `config-show` and refreshes every
   displayed value from the controller response.
 - `config-set-phase` writes the per-phase profile and reasoning effort. Reasoning
-  effort is set independently for planning, review, and adversarial review.
+  effort is set independently for enhance, planning, review, and adversarial
+  review.
 - `config-list-claude-runtimes` populates the Claude runtime dropdown;
   `config-set-claude-runtime` writes the choice onto the active preset. The
   extension never rewrites Claude credentials or provider API keys — it only
@@ -140,13 +146,13 @@ runs continue to execute with the configuration snapshot the controller pinned
 into `run-state.json` at init time, and the dashboard displays that snapshot
 read-only so you can see exactly what the run was created with.
 
-### Start Autonomous Run
+### New Run
 
-**Start Autonomous Run** validates workspace trust, resolves the selected
-Claude runtime, and verifies that its launcher exists and is executable. It
-opens one Claude session in the selected workspace folder with the launcher's
-configured arguments and the shared bounded autonomous permission policy. The
-command fails clearly when:
+**New Run…** asks for a run mode and feature description, validates workspace
+trust, resolves the selected Claude runtime, and verifies that its launcher
+exists and is executable. It opens one Claude session in the selected workspace
+folder with the launcher's configured arguments and the shared bounded
+autonomous permission policy. The command fails clearly when:
 
 - no controller is configured (Set Up Controller is offered),
 - no Claude runtime is selected,
@@ -154,9 +160,9 @@ command fails clearly when:
 - the launcher is not executable.
 
 The launcher owns the Claude provider, deployment/model, and reasoning effort;
-the extension does not edit those directly. After Claude opens, invoke one of
-the autonomous skills shown in the terminal notification. That skill—not the
-extension—initializes and drives the controller run. The older
+the extension does not edit those directly. The extension submits the selected
+autonomous skill as Claude's initial prompt. That skill—not the extension—
+initializes and drives the controller run. The older
 `autonomousDev.openAutonomousClaude` and `autonomousDev.launchClaude` command IDs
 are compatibility aliases for the same Start implementation.
 
@@ -197,13 +203,13 @@ and it never persists Claude credentials or provider API keys.
 
 ### Troubleshooting
 
-| Situation                                                             | Likely cause                                                       | What to do                                                                |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| "Controller not configured" in the Configuration tree                 | `autonomousDev.controllerPath` is empty                            | Run **Set Up Controller** to point at `scripts/controller.py`.            |
-| Dropdowns are empty                                                   | The controller succeeded but no profiles/presets/runtimes are defined | Add them to `config.toml` (see the controller's `docs/config-contract.md`) |
-| A phase profile is flagged as missing or invalid                      | `$CODEX_HOME` does not contain the selected profile                | Install / fix the Codex profile under `~/.codex/`.                        |
-| "Launcher not executable" when launching Claude                       | The launcher file exists but its executable bit is not set         | `chmod +x` the launcher, then re-run **Start Autonomous Run**.            |
-| Azure Codex fails on its first real phase with codex-cli 0.147.0      | Upstream Responses Lite tool serialization is incompatible with Azure | Temporarily pin codex-cli 0.146.1; see the [controller compatibility note](https://github.com/sigmundas/autonomous-development#azure-openai--codex-cli-compatibility). |
+| Situation                                                        | Likely cause                                                          | What to do                                                                                                                                                             |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Controller not configured" in the Configuration tree            | `autonomousDev.controllerPath` is empty                               | Run **Set Up Controller** to point at `scripts/controller.py`.                                                                                                         |
+| Dropdowns are empty                                              | The controller succeeded but no profiles/presets/runtimes are defined | Follow the [Configuration guide](https://github.com/sigmundas/autonomous-development-vsplugin/blob/main/docs/CONFIGURATION.md) to create them.                         |
+| A phase profile is flagged as missing or invalid                 | `$CODEX_HOME` does not contain the selected profile                   | Install / fix the Codex profile under `~/.codex/`.                                                                                                                     |
+| "Launcher not executable" when launching Claude                  | The launcher file exists but its executable bit is not set            | `chmod +x` the launcher, then re-run **Start Autonomous Run**.                                                                                                         |
+| Azure Codex fails on its first real phase with codex-cli 0.147.0 | Upstream Responses Lite tool serialization is incompatible with Azure | Temporarily pin codex-cli 0.146.1; see the [controller compatibility note](https://github.com/sigmundas/autonomous-development#azure-openai--codex-cli-compatibility). |
 
 With the validated Azure profile, a large `/models` catalog-decode warning can
 still appear under codex-cli 0.146.1. That warning is non-fatal when the direct

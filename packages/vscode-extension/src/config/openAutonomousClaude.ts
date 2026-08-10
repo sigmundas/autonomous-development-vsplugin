@@ -26,6 +26,27 @@ export interface OpenAutonomousClaudeDeps {
   readonly showError?: (message: string) => Thenable<string | undefined>;
 }
 
+export type NewRunMode = 'feature' | 'current' | 'main';
+
+export interface NewRunBootstrap {
+  readonly mode: NewRunMode;
+  readonly feature: string;
+}
+
+const START_SKILL_BY_MODE: Readonly<Record<NewRunMode, string>> = {
+  feature: '/autonomous-development:autonomous-feature',
+  current: '/autonomous-development:autonomous-current',
+  main: '/autonomous-development:autonomous-main'
+};
+
+export function newRunBootstrapPrompt(bootstrap: NewRunBootstrap): string {
+  const feature = bootstrap.feature.trim();
+  if (!feature) {
+    throw new Error('A feature description is required to start an autonomous run.');
+  }
+  return `${START_SKILL_BY_MODE[bootstrap.mode]} ${feature}`;
+}
+
 export interface OpenAutonomousClaudePlan {
   readonly runtime: ClaudeRuntime;
   readonly cwd: string;
@@ -46,12 +67,18 @@ export function autonomousClaudeTerminalName(cwd: string | undefined): string {
 export function planOpenAutonomousClaude(
   runtime: ClaudeRuntime,
   cwd: string,
-  controllerPath: string
+  controllerPath: string,
+  bootstrap?: NewRunBootstrap
 ): OpenAutonomousClaudePlan {
   const pluginDir = pluginDirFromControllerPath(controllerPath);
   const launcherArgv = withAutonomousClaudePermissions(buildLauncherArgs(runtime));
   if (pluginDir) {
     launcherArgv.push('--plugin-dir', pluginDir);
+  }
+  if (bootstrap) {
+    // Claude accepts a positional prompt while remaining interactive. This
+    // invokes the existing skill, which continues to own controller init.
+    launcherArgv.push(newRunBootstrapPrompt(bootstrap));
   }
   return {
     runtime,
@@ -88,7 +115,8 @@ export function buildOpenAutonomousClaudeTerminalOptions(
 
 export async function openAutonomousClaudeInWorkspace(
   cwd: string,
-  deps: OpenAutonomousClaudeDeps
+  deps: OpenAutonomousClaudeDeps,
+  bootstrap?: NewRunBootstrap
 ): Promise<OpenAutonomousClaudePlan | undefined> {
   const showError = deps.showError ?? ((msg: string) => vscode.window.showErrorMessage(msg));
   const showInfo = deps.showInfo ?? ((msg: string) => vscode.window.showInformationMessage(msg));
@@ -105,9 +133,7 @@ export async function openAutonomousClaudeInWorkspace(
   await deps.store.refresh();
   const snap = deps.store.current;
   if (!snap.controllerAvailable) {
-    void showError(
-      'No controller is configured; the Claude runtime selection cannot be resolved.'
-    );
+    void showError('No controller is configured; the Claude runtime selection cannot be resolved.');
     return undefined;
   }
   const runtimeName = snap.effective?.effective.claudeRuntime;
@@ -137,7 +163,7 @@ export async function openAutonomousClaudeInWorkspace(
     return undefined;
   }
 
-  const plan = planOpenAutonomousClaude(runtime, cwd, deps.getControllerPath());
+  const plan = planOpenAutonomousClaude(runtime, cwd, deps.getControllerPath(), bootstrap);
   deps.log.info(
     `openAutonomousClaude cwd=${cwd} runtime=${runtime.name} launcher=${runtime.launcher}`
   );
@@ -163,9 +189,11 @@ export async function openAutonomousClaudeInWorkspace(
   terminal.show();
 
   void showInfo(
-    `Autonomous Claude is ready with ${runtime.displayName ?? runtime.name} in ${cwd}. ` +
-      'Invoke one skill to initialize the run: /autonomous-development:autonomous-feature, ' +
-      '/autonomous-development:autonomous-current, or /autonomous-development:autonomous-main.'
+    bootstrap
+      ? `Starting a new ${bootstrap.mode} run with ${runtime.displayName ?? runtime.name} in ${cwd}. The selected autonomous workflow was submitted automatically.`
+      : `Autonomous Claude is ready with ${runtime.displayName ?? runtime.name} in ${cwd}. ` +
+          'Invoke one skill to initialize the run: /autonomous-development:autonomous-feature, ' +
+          '/autonomous-development:autonomous-current, or /autonomous-development:autonomous-main.'
   );
   return plan;
 }

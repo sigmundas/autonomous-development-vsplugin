@@ -86,11 +86,7 @@ function checkoutLabel(mode?: string): string | undefined {
 function renderTaskBlock(view: DashboardView): HTMLElement {
   const text = view.feature || view.runId;
   const long = text.length > TASK_COLLAPSED_MAX_CHARS;
-  const body = el(
-    'p',
-    { class: `task-body${long ? ' collapsed' : ''}`, id: 'task-body' },
-    [text]
-  );
+  const body = el('p', { class: `task-body${long ? ' collapsed' : ''}`, id: 'task-body' }, [text]);
   const wrap = el('div', { class: 'task-wrap' }, [
     el('h2', { class: 'small-label' }, ['Task']),
     body
@@ -156,34 +152,61 @@ function renderHeader(view: DashboardView): HTMLElement {
   if (view.repository.remoteDisplay) repoMeta.push(kv('Remote', view.repository.remoteDisplay));
   if (view.createdAt) repoMeta.push(kv('Created', view.createdAt));
   if (view.updatedAt) repoMeta.push(kv('Updated', view.updatedAt));
+  if (view.recovery.parentRunId) repoMeta.push(kv('Continuation of', view.recovery.parentRunId));
+  if (view.recovery.continuedByRunId) {
+    repoMeta.push(kv('Continued by run', view.recovery.continuedByRunId));
+  }
 
-  const canResume = !view.isTerminal;
+  const canResume = !view.isTerminal && !view.recovery.reviewBudgetExhausted;
   const canCancel = view.status === 'active';
   const terminalOpen = view.claudeTerminalOpen;
   const actions = el('div', { class: 'run-actions' }, [
+    view.recovery.reviewBudgetExhausted &&
+    (view.status === 'active' || view.status === 'blocked')
+      ? button(
+          view.recovery.continuedByRunId
+            ? `Resume review continuation ${view.recovery.continuedByRunId}`
+            : 'Allow one more review',
+          () => command('autonomousDev.authorizeReview'), {
+          class: 'primary',
+          title:
+            view.status === 'blocked'
+              ? 'Create or reuse a linked continuation, authorize +1 review there, and resume it without mutating the terminal parent.'
+              : 'Explicitly authorize +1 review for this run and resume it without changing its snapshotted or global configuration.'
+          }
+        )
+      : null,
+    view.status === 'blocked'
+      ? button(
+          view.nextAction.code === 'resume-adversarial'
+            ? 'Resume missing adversarial review'
+            : view.recovery.continuedByRunId
+              ? `Resume continuation ${view.recovery.continuedByRunId}`
+              : 'Continue blocked run…',
+          () => command('autonomousDev.continueBlockedRun'), {
+          class: 'primary',
+          title: 'Create a linked follow-up on the same checkout with preserved context and evidence.'
+          }
+        )
+      : null,
     canResume
       ? terminalOpen
-        ? button(
-            'Focus Claude terminal',
-            () => command('autonomousDev.focusClaudeTerminal'),
-            {
-              class: 'primary',
-              title:
-                'An extension-tracked Claude terminal is already open for this run. Clicking will reveal it — a new session will not be spawned.'
-            }
-          )
-        : button(
-            '▶ Resume in Claude',
-            () => command('autonomousDev.resumeInClaude'),
-            {
-              class: 'primary',
-              title:
-                "Launch the run's snapshotted Claude runtime rooted at its worktree and continue from the recorded phase."
-            }
-          )
+        ? button('Focus Claude terminal', () => command('autonomousDev.focusClaudeTerminal'), {
+            class: 'primary',
+            title:
+              'An extension-tracked Claude terminal is already open for this run. Clicking will reveal it — a new session will not be spawned.'
+          })
+        : button('▶ Resume in Claude', () => command('autonomousDev.resumeInClaude'), {
+            class: 'primary',
+            title:
+              "Launch the run's snapshotted Claude runtime rooted at its worktree and continue from the recorded phase."
+          })
       : null,
     canCancel
       ? button('Cancel run', () => command('autonomousDev.cancelRun'), { class: 'danger' })
+      : null,
+    view.status === 'blocked'
+      ? button('Archive', () => command('autonomousDev.archiveRun'))
       : null
   ]);
 
@@ -192,6 +215,16 @@ function renderHeader(view: DashboardView): HTMLElement {
     badges,
     view.blockingReason
       ? el('p', { class: 'blocking' }, [`Blocked: ${view.blockingReason}`])
+      : null,
+    view.recovery.reviewBudgetExhausted || view.status === 'blocked'
+      ? el('p', { class: 'muted' }, [
+          view.recovery.reviewBudgetExhausted
+            ? 'Progress stopped because the snapshotted review-round budget was exhausted. '
+            : `Progress stopped because the run is blocked${view.blockingReason ? `: ${view.blockingReason}` : ''}. `,
+          `Work ${view.recovery.workPreserved ? 'is' : 'may be'} preserved; verification ${
+            view.recovery.verificationPreserved ? 'is recorded' : 'has not been recorded'
+          }. Required gates remain pending until they are reassessed.`
+        ])
       : null,
     el('div', { class: 'meta' }, repoMeta),
     actions
@@ -205,12 +238,24 @@ function renderCurrentActivity(view: DashboardView): HTMLElement | null {
     kv('Phase', activity.phase || '—'),
     kv('Next', activity.nextActionMessage || '—')
   ];
+  if (view.review.hasReviews) {
+    const round =
+      view.review.latestRound !== undefined ? `Round ${view.review.latestRound}` : 'Completed';
+    const verdict = view.review.latestVerdict?.replaceAll('_', ' ');
+    cells.push(kv('Latest Codex review', verdict ? `${round} · ${verdict}` : round));
+    if (activity.phase === 'triage') {
+      cells.push(kv('Now', 'Codex review finished; Claude is triaging and fixing findings'));
+    } else if (
+      activity.phase === 'review' ||
+      activity.phase === 'reviewing' ||
+      activity.phase === 'independent-review'
+    ) {
+      cells.push(kv('Now', 'Earlier review finished; Codex re-review is in progress'));
+    }
+  }
   if (activity.latestNote) cells.push(kv('Latest note', activity.latestNote));
   cells.push(
-    kv(
-      'Claude terminal',
-      activity.claudeTerminalOpen ? 'open (this extension)' : 'not open'
-    )
+    kv('Claude terminal', activity.claudeTerminalOpen ? 'open (this extension)' : 'not open')
   );
   if (activity.updatedAt) cells.push(kv('Updated', activity.updatedAt));
   return section(
@@ -257,6 +302,9 @@ function renderStages(stages: readonly DashboardStage[]): HTMLElement {
         )
       );
     }
+    if (s.detail) {
+      contents.push(el('span', { class: 'stage-detail' }, [s.detail]));
+    }
     const li = el(
       'li',
       {
@@ -296,6 +344,9 @@ function renderStatus(view: DashboardView): HTMLElement {
     kv(
       'Review budget',
       `${view.reviewBudget.consumed}/${view.reviewBudget.max} used (${view.reviewBudget.remaining} left)`
+        + (view.reviewBudget.max > view.reviewBudget.originalMax
+          ? `; original limit ${view.reviewBudget.originalMax}, +${view.reviewBudget.max - view.reviewBudget.originalMax} authorized`
+          : '')
     ),
     kv(
       'Verification',
@@ -367,6 +418,7 @@ function renderCumulativeFinding(f: DashboardCumulativeFinding): HTMLElement {
   if (f.origin) provenance.push(f.origin);
   if (f.resolvedAtRound !== undefined) provenance.push(`resolved r${f.resolvedAtRound}`);
   if (f.resolutionSource) provenance.push(`via ${f.resolutionSource}`);
+  if (f.assessmentState === 'needs_reassessment') provenance.push('needs reassessment');
   const body: Child[] = [];
   if (f.description) body.push(el('p', { class: 'finding-desc' }, [f.description]));
   if (provenance.length)
@@ -402,7 +454,9 @@ function renderAcceptanceCriteria(view: DashboardView): HTMLElement | null {
       el('td', {}, [c.id ?? '—']),
       el('td', {}, [
         el('span', { class: `ac-status ac-${(c.status ?? 'unknown').toLowerCase()}` }, [
-          c.status ?? 'unknown'
+          c.assessmentState === 'needs_reassessment'
+            ? `${c.status ?? 'unknown'} (needs reassessment)`
+            : c.status ?? 'unknown'
         ])
       ]),
       el('td', {}, [c.blocking ? 'blocking' : 'satisfied']),

@@ -23,6 +23,10 @@ own workflow orchestration. The extension reads their state, provides bounded
 configuration and lifecycle controls, and adds a typed, append-only event
 protocol (`events.jsonl`). See [ROADMAP.md](ROADMAP.md).
 
+New installation? See the [Configuration guide](docs/CONFIGURATION.md) for the
+required TOML files, profile naming, presets, Claude runtimes, and a complete
+working example.
+
 ## Features
 
 - **Activity-bar container** with three native tree views: Active, Completed, and
@@ -80,6 +84,10 @@ without a controller.
 
 ## Configuration
 
+For a fresh setup, follow the beginner-facing
+[configuration guide](docs/CONFIGURATION.md). It explains the two kinds of TOML
+files, Codex profile naming, Claude runtimes, presets, and all four Codex phases.
+
 | Setting                            | Default     | Purpose                                                          |
 | ---------------------------------- | ----------- | ---------------------------------------------------------------- |
 | `autonomousDev.controllerPath`     | `""`        | Absolute path to `scripts/controller.py`. Empty ⇒ observer-only. |
@@ -125,6 +133,8 @@ it and requires a display (use `xvfb-run` on headless Linux).
 
 ## Documentation
 
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — setup guide for presets,
+  Codex profiles, Claude runtimes, and the required TOML files.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — package boundaries and data flow.
 - [PROTOCOL.md](PROTOCOL.md) — the RunEvent envelope and compatibility rules.
 - [SECURITY.md](SECURITY.md) — trust boundaries and sensitive-data handling.

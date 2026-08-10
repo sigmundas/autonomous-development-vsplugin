@@ -5,14 +5,18 @@ import type { ExtensionConfig } from '../config';
 import { ControllerService } from '../controller/controllerService';
 import { DashboardPanel } from '../dashboard/dashboardPanel';
 import type { OutputLog } from '../output';
-import type { RunStore } from '../runStore';
+import { runKey, type RunStore } from '../runStore';
 import { runGuidedSetup } from '../setup';
 import type { DetailNode, RunNode } from '../tree/runTreeItem';
 import * as artifacts from './openArtifacts';
 import * as controller from './controllerCommands';
 import * as configCmds from '../config/configCommands';
 import type { ConfigCommandDeps } from '../config/configCommands';
-import { openAutonomousClaudeInWorkspace } from '../config/openAutonomousClaude';
+import {
+  openAutonomousClaudeInWorkspace,
+  type NewRunBootstrap,
+  type NewRunMode
+} from '../config/openAutonomousClaude';
 import { resumeRunInClaude } from '../config/resumeInClaude';
 import type { ClaudeTerminalRegistry } from '../config/claudeTerminalRegistry';
 import { terminalIdentityForRun } from '../config/claudeTerminalIdentity';
@@ -42,15 +46,62 @@ export const NEW_AUTONOMOUS_SESSION_COMMAND_IDS = [
 
 export function createStartRunCommandHandler(deps: {
   readonly resolveProjectRoot: () => Promise<string | undefined>;
-  readonly openAutonomousClaude: (projectRoot: string) => Promise<unknown>;
+  readonly selectRunMode: () => Promise<NewRunMode | undefined>;
+  readonly promptFeature: () => Promise<string | undefined>;
+  readonly openAutonomousClaude: (
+    projectRoot: string,
+    bootstrap: NewRunBootstrap
+  ) => Promise<unknown>;
 }): () => Promise<void> {
   return async () => {
     const projectRoot = await deps.resolveProjectRoot();
     if (!projectRoot) {
       return;
     }
-    await deps.openAutonomousClaude(projectRoot);
+    const mode = await deps.selectRunMode();
+    if (!mode) return;
+    const feature = (await deps.promptFeature())?.trim();
+    if (!feature) return;
+    await deps.openAutonomousClaude(projectRoot, { mode, feature });
   };
+}
+
+async function selectRunMode(): Promise<NewRunMode | undefined> {
+  const picked = await vscode.window.showQuickPick(
+    [
+      {
+        label: 'Feature branch / isolated worktree',
+        description: 'Recommended',
+        detail: 'Use autonomous-feature and keep changes isolated from the current checkout.',
+        mode: 'feature' as const
+      },
+      {
+        label: 'Current branch',
+        detail: 'Use autonomous-current in the clean branch currently checked out.',
+        mode: 'current' as const
+      },
+      {
+        label: 'Main',
+        detail: 'Use autonomous-main in the clean main or master checkout.',
+        mode: 'main' as const
+      }
+    ],
+    {
+      title: 'Start new autonomous run',
+      placeHolder: 'Choose where Claude should implement the feature'
+    }
+  );
+  return picked?.mode;
+}
+
+async function promptFeature(): Promise<string | undefined> {
+  return vscode.window.showInputBox({
+    title: 'Start new autonomous run',
+    prompt: 'Describe the feature or change for Claude to implement',
+    placeHolder: 'Feature idea',
+    ignoreFocusOut: true,
+    validateInput: (value) => (value.trim().length > 0 ? undefined : 'Enter a feature description.')
+  });
 }
 
 function isRun(value: unknown): value is DiscoveredRun {
@@ -125,6 +176,29 @@ export function registerCommands(deps: CommandDeps): void {
     getConfig: deps.getConfig,
     refresh: deps.refresh
   };
+  const recoveryDeps: controller.RecoveryCommandDeps = {
+    ...controllerDeps,
+    getRun: (repoId, runId) => store.getByKey(runKey({ repoId, runId })),
+    surfaceRun: (run) => {
+      store.select(run);
+      DashboardPanel.show(
+        context.extensionUri,
+        store,
+        deps.getConfig,
+        log,
+        run,
+        deps.terminalRegistry
+      );
+    },
+    resumeRun: async (run) => {
+      await resumeRunInClaude(run, {
+        store: deps.configStore,
+        log,
+        registry: deps.terminalRegistry,
+        getControllerPath: () => deps.getConfig().controllerPath
+      });
+    }
+  };
 
   /** Wrap a run-scoped artifact handler with target resolution + error reporting. */
   const runScoped =
@@ -152,35 +226,48 @@ export function registerCommands(deps: CommandDeps): void {
   register(
     'autonomousDev.openDashboard',
     runScoped((run) => {
-      DashboardPanel.show(context.extensionUri, store, deps.getConfig, log, run, deps.terminalRegistry);
+      DashboardPanel.show(
+        context.extensionUri,
+        store,
+        deps.getConfig,
+        log,
+        run,
+        deps.terminalRegistry
+      );
     })
   );
   register('autonomousDev.refreshRuns', () => deps.refresh());
   const startRun = createStartRunCommandHandler({
     resolveProjectRoot,
-    openAutonomousClaude: (projectRoot) => {
+    selectRunMode,
+    promptFeature,
+    openAutonomousClaude: (projectRoot, bootstrap) => {
       const repositoryId = resolveWorkspaceRepoId(projectRoot);
-      return openAutonomousClaudeInWorkspace(projectRoot, {
-        store: deps.configStore,
-        log,
-        getControllerPath: () => deps.getConfig().controllerPath,
-        registry: deps.terminalRegistry,
-        ...(repositoryId
-          ? {
-              unboundRepository: {
-                repositoryId,
-                getKnownRunIds: () => {
-                  // Sample immediately before terminal creation. The skill-owned
-                  // run can only be created after the terminal is shown.
-                  deps.refresh();
-                  return store.allRuns
-                    .filter((run) => run.repoId === repositoryId)
-                    .map((run) => run.runId);
+      return openAutonomousClaudeInWorkspace(
+        projectRoot,
+        {
+          store: deps.configStore,
+          log,
+          getControllerPath: () => deps.getConfig().controllerPath,
+          registry: deps.terminalRegistry,
+          ...(repositoryId
+            ? {
+                unboundRepository: {
+                  repositoryId,
+                  getKnownRunIds: () => {
+                    // Sample immediately before terminal creation. The skill-owned
+                    // run can only be created after the terminal is shown.
+                    deps.refresh();
+                    return store.allRuns
+                      .filter((run) => run.repoId === repositoryId)
+                      .map((run) => run.runId);
+                  }
                 }
               }
-            }
-          : {})
-      });
+            : {})
+        },
+        bootstrap
+      );
     }
   });
   for (const id of NEW_AUTONOMOUS_SESSION_COMMAND_IDS) {
@@ -213,6 +300,14 @@ export function registerCommands(deps: CommandDeps): void {
   register(
     'autonomousDev.archiveRun',
     runScoped((run) => controller.archiveRun(run, controllerDeps))
+  );
+  register(
+    'autonomousDev.authorizeReview',
+    runScoped((run) => controller.authorizeReview(run, recoveryDeps))
+  );
+  register(
+    'autonomousDev.continueBlockedRun',
+    runScoped((run) => controller.continueBlockedRun(run, recoveryDeps))
   );
 
   register('autonomousDev.setupController', () =>

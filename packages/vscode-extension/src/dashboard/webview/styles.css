@@ -230,6 +230,12 @@ h3 {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.stage-detail {
+  grid-column: 2;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.82rem;
+}
 .stage-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

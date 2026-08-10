@@ -320,13 +320,18 @@ export function isKnownShellBinary(candidate: string | undefined): boolean {
  * The options set here structurally block Python auto-activation from ever
  * reaching Claude:
  *
- * 1. `shellPath` is the launcher binary itself (not `/bin/bash` or another
+ * 1. `hideFromUser` is set at creation time. VS Code's Python environment
+ *    extensions treat that creation option as an explicit activation opt-out,
+ *    so they do not call `Terminal.sendText` with an activation command. We
+ *    still reveal the terminal immediately after creation; the immutable
+ *    creation option remains available to activation listeners.
+ * 2. `shellPath` is the launcher binary itself (not `/bin/bash` or another
  *    interactive shell). The Python extension only injects activation into
  *    terminals whose shell it recognizes; a launcher path fails that check.
- * 2. Deterministic env markers (`AUTODEV_RUN_ID`, `AUTODEV_CLAUDE_TERMINAL=1`)
+ * 3. Deterministic env markers (`AUTODEV_RUN_ID`, `AUTODEV_CLAUDE_TERMINAL=1`)
  *    let observers — and this extension's own registry recovery — identify
  *    the terminal even without cooperating shells.
- * 3. The terminal name follows a stable repository-qualified pattern parsed by
+ * 4. The terminal name follows a stable repository-qualified pattern parsed by
  *    {@link parseClaudeTerminalIdentity}, so post-reload recovery works even
  *    when the in-memory registry is empty.
  */
@@ -346,6 +351,7 @@ export function buildTerminalOptions(plan: ResumeInClaudePlan): vscode.TerminalO
   return {
     name: claudeTerminalNameFor(terminalIdentityForRun(plan.run)),
     cwd: plan.worktreePath,
+    hideFromUser: true,
     ...(shellPath !== undefined ? { shellPath } : {}),
     shellArgs,
     env
@@ -359,10 +365,9 @@ export function buildTerminalOptions(plan: ResumeInClaudePlan): vscode.TerminalO
  * Semantics:
  *
  * - Never invokes `controller init`. Never creates a second controller run.
- * - Never sends text into an interactive shell after Claude has started —
- *   the terminal's process itself IS the Claude launcher (via
- *   `shellPath`/`shellArgs`), so the Python extension's `.venv/bin/activate`
- *   command can never race into Claude's input.
+ * - Never sends text into an interactive shell after Claude has started. The
+ *   terminal is created with Python's activation opt-out and its process is
+ *   the Claude launcher itself (via `shellPath`/`shellArgs`).
  * - Only one extension-tracked Claude terminal exists per run at a time.
  *   Calling this while a tracked terminal is alive focuses that terminal
  *   instead of spawning a new one.
@@ -477,10 +482,10 @@ async function runResumeInClaude(
   const create =
     deps.createTerminal ??
     ((options: vscode.TerminalOptions) => vscode.window.createTerminal(options));
-  // Launch the validated launcher as the terminal's OWN process. VS Code will
-  // spawn the launcher directly with our argv — no shell activation script can
-  // interpose. This is what closes the Python-source-activate race window that
-  // sendText into an interactive shell suffered from.
+  // Launch the validated launcher as the terminal's OWN process. The creation
+  // options also carry hideFromUser=true, which Python checks on terminal-open
+  // before deciding whether to inject activation text. Calling show() here
+  // reveals the terminal without changing that immutable creation option.
   const terminal = create(buildTerminalOptions(plan));
   terminal.show();
   registry?.register(identity, terminal);

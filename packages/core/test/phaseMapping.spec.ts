@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
 
-import {
-  deriveStages,
-  stageForControllerPhase,
-  type StageFacts
-} from '../src/workflow/stages';
+import { deriveStages, stageForControllerPhase, type StageFacts } from '../src/workflow/stages';
 
 /**
  * Baseline facts for a "plan just accepted, nothing implemented yet" run. The
@@ -145,5 +141,66 @@ describe('deriveStages when controllerPhase is unknown (fallback)', () => {
   });
   it('Plan Proposed is complete (proposed plan exists)', () => {
     assert.equal(byId.get('plan-proposed')?.status, 'complete');
+  });
+});
+
+describe('deriveStages review history', () => {
+  it('keeps a completed changes-required review complete while triage is active', () => {
+    const facts: StageFacts = {
+      ...planAcceptedFacts(),
+      hasChecks: true,
+      verificationPassed: true,
+      hasReviews: true,
+      reviewPassed: false,
+      latestReviewRound: 2,
+      latestReviewVerdict: 'changes_required',
+      severeFindingCount: 1,
+      controllerPhase: 'triage',
+      nextActionCode: 'triage-findings'
+    };
+    const byId = new Map(deriveStages(facts).map((stage) => [stage.id, stage]));
+    assert.deepEqual(byId.get('independent-review'), {
+      id: 'independent-review',
+      title: 'Independent Review',
+      status: 'complete',
+      detail: 'Round 2 · changes required'
+    });
+    assert.deepEqual(byId.get('triage'), {
+      id: 'triage',
+      title: 'Finding Triage and Fixes',
+      status: 'active',
+      detail: 'After round 2 · changes required'
+    });
+  });
+
+  it('shows a repeated review as active without erasing the prior round', () => {
+    const facts: StageFacts = {
+      ...planAcceptedFacts(),
+      hasChecks: true,
+      verificationPassed: true,
+      hasReviews: true,
+      reviewPassed: false,
+      latestReviewRound: 2,
+      latestReviewVerdict: 'changes_required',
+      severeFindingCount: 1,
+      controllerPhase: 'review',
+      nextActionCode: 'triage-findings'
+    };
+    const review = deriveStages(facts).find((stage) => stage.id === 'independent-review');
+    assert.equal(review?.status, 'active');
+    assert.equal(review?.detail, 'Round 2 · changes required · re-review in progress');
+  });
+});
+
+describe('deriveStages skipped enhancement', () => {
+  it('marks enhancement not run when an accepted specification proves the workflow advanced', () => {
+    const facts: StageFacts = { ...planAcceptedFacts(), hasEnhance: false };
+    const enhancement = deriveStages(facts).find((stage) => stage.id === 'idea-enhanced');
+    assert.deepEqual(enhancement, {
+      id: 'idea-enhanced',
+      title: 'Idea Enhanced',
+      status: 'skipped',
+      detail: 'Not run'
+    });
   });
 });

@@ -31,8 +31,17 @@ body {
   font-size: 0.85rem;
 }
 
+code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
 .warning {
-  color: var(--vscode-editorWarning-foreground, var(--vscode-notificationsWarningIcon-foreground, #b58900));
+  color: var(
+    --vscode-editorWarning-foreground,
+    var(--vscode-notificationsWarningIcon-foreground, #b58900)
+  );
 }
 
 .error-banner {
@@ -50,7 +59,8 @@ body {
 
 .panel {
   background: var(--vscode-editorWidget-background, transparent);
-  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.25)));
+  border: 1px solid
+    var(--vscode-editorWidget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.25)));
   border-radius: 6px;
   padding: 1rem 1.25rem;
   margin: 1rem 0;
@@ -64,6 +74,25 @@ body {
 .panel h3 {
   margin: 0.5rem 0 0.25rem;
   font-size: 0.95rem;
+}
+
+.setup-steps {
+  margin: 0.5rem 0 0.75rem;
+  padding-left: 1.4rem;
+}
+
+.setup-steps li + li {
+  margin-top: 0.4rem;
+}
+
+.onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.onboarding-actions button + button {
+  margin-left: 0;
 }
 
 .grid {
@@ -127,6 +156,12 @@ button + button {
 
 .phase-card:first-of-type {
   border-top: none;
+}
+
+.phase-description {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem;
 }
 
 .footer {

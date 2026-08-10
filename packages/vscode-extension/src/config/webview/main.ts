@@ -19,6 +19,7 @@ interface ConfigView {
   error?: string;
   configPath?: string;
   configExists: boolean;
+  codexHome?: string;
   activePreset?: string;
   workflowMode?: string;
   maxReviewRounds?: number;
@@ -93,7 +94,11 @@ function escapeHtml(input: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function el(tag: string, attrs: Record<string, string> = {}, ...children: (Node | string)[]): HTMLElement {
+function el(
+  tag: string,
+  attrs: Record<string, string> = {},
+  ...children: (Node | string)[]
+): HTMLElement {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     node.setAttribute(k, v);
@@ -134,11 +139,70 @@ function render(view: ConfigView): void {
   }
 
   app.appendChild(renderHeader(view));
+  app.appendChild(renderOnboarding(view));
   app.appendChild(renderGeneral(view));
   app.appendChild(renderClaude(view));
   app.appendChild(renderPhases(view));
   app.appendChild(renderValidation(view));
   app.appendChild(renderFooter(view));
+}
+
+function renderOnboarding(view: ConfigView): HTMLElement {
+  const wrap = el('section', { class: 'panel onboarding' });
+  wrap.appendChild(el('h2', {}, 'How configuration works'));
+
+  const codexHome = view.codexHome ?? '$CODEX_HOME (normally ~/.codex)';
+  const separator = codexHome.includes('\\') && !codexHome.includes('/') ? '\\' : '/';
+  const examplePath = `${codexHome}${codexHome.endsWith(separator) ? '' : separator}azure-gpt5p6-sol.config.toml`;
+  const configPath = view.configPath ?? 'the resolved Autonomous Development config.toml';
+  const steps = el('ol', { class: 'setup-steps' });
+
+  const profiles = el('li');
+  profiles.append(
+    'Create Codex profiles in ',
+    el('code', {}, codexHome),
+    ' as ',
+    el('code', {}, '<profile-name>.config.toml'),
+    '. For example, ',
+    el('code', {}, examplePath),
+    ' becomes profile id ',
+    el('code', {}, 'azure-gpt5p6-sol'),
+    '.'
+  );
+  steps.appendChild(profiles);
+
+  const autonomousConfig = el('li');
+  autonomousConfig.append('Configure Autonomous Development in ', el('code', {}, configPath), '.');
+  steps.appendChild(autonomousConfig);
+
+  steps.appendChild(
+    el(
+      'li',
+      {},
+      'Define and select a preset. A preset groups a workflow mode, Claude runtime, and Codex profile plus reasoning effort for each phase.'
+    )
+  );
+  steps.appendChild(
+    el(
+      'li',
+      {},
+      'Choose the preset, runtime, and phase options below. Changes affect new runs; active runs keep their saved configuration snapshot.'
+    )
+  );
+  wrap.appendChild(steps);
+
+  const actions = el('div', { class: 'onboarding-actions' });
+  const openConfig = el('button', { type: 'button' }, 'Open config.toml') as HTMLButtonElement;
+  openConfig.disabled = !view.configPath || !view.configExists;
+  if (!view.configExists) {
+    openConfig.title = 'Create config.toml at the resolved path first.';
+  }
+  openConfig.addEventListener('click', () => post({ type: 'openConfig' }));
+  const openGuide = el('button', { type: 'button' }, 'Configuration guide') as HTMLButtonElement;
+  openGuide.addEventListener('click', () => post({ type: 'openGuide' }));
+  actions.append(openConfig, openGuide);
+  wrap.appendChild(actions);
+  return wrap;
 }
 
 function renderUnavailable(): HTMLElement {
@@ -151,7 +215,11 @@ function renderUnavailable(): HTMLElement {
       'The autonomous-development controller is not configured. Observer features continue to work; configuration editing is unavailable until the controller path is set.'
     )
   );
-  const btn = el('button', { type: 'button', class: 'primary' }, 'Set Up Controller') as HTMLButtonElement;
+  const btn = el(
+    'button',
+    { type: 'button', class: 'primary' },
+    'Set Up Controller'
+  ) as HTMLButtonElement;
   btn.addEventListener('click', () => post({ type: 'setupController' }));
   wrap.appendChild(btn);
   return wrap;
@@ -167,7 +235,13 @@ function renderHeader(view: ConfigView): HTMLElement {
   );
   wrap.appendChild(sub);
   if (view.configPath) {
-    wrap.appendChild(el('p', { class: 'muted small' }, `Config: ${view.configPath}${view.configExists ? '' : ' (not yet created)'}`));
+    wrap.appendChild(
+      el(
+        'p',
+        { class: 'muted small' },
+        `Config: ${view.configPath}${view.configExists ? '' : ' (not yet created)'}`
+      )
+    );
   }
   if (!view.trusted) {
     wrap.appendChild(
@@ -218,9 +292,7 @@ function renderGeneral(view: ConfigView): HTMLElement {
   // [workflow] TOML block. Not editable from the extension: the controller
   // config contract does not yet expose a mutating command for these fields.)
   grid.appendChild(el('span', { class: 'field-label' }, 'Workflow mode'));
-  grid.appendChild(
-    el('span', { class: 'value muted' }, `${view.workflowMode ?? '—'} · read-only`)
-  );
+  grid.appendChild(el('span', { class: 'value muted' }, `${view.workflowMode ?? '—'} · read-only`));
 
   // Max review rounds (same rationale as workflow mode)
   grid.appendChild(el('span', { class: 'field-label' }, 'Maximum review rounds'));
@@ -237,7 +309,7 @@ function renderGeneral(view: ConfigView): HTMLElement {
     el(
       'p',
       { class: 'muted small' },
-      "These settings can't be edited here yet. To change them, open your config.toml file and edit them there, then click Refresh — or use “Show Effective Configuration” to open the file directly."
+      "These settings can't be edited here yet. To change them, open config.toml from the setup section, edit it, and then click Refresh."
     )
   );
   return wrap;
@@ -250,16 +322,10 @@ function renderClaude(view: ConfigView): HTMLElement {
     el(
       'p',
       { class: 'muted small' },
-      'This selection chooses which pre-installed launcher script the extension spawns when you start an autonomous run. The launcher owns the Claude provider, deployment/model, and reasoning effort — this version of the extension does not edit those directly.'
+      "Chooses which Claude setup is used when starting a new autonomous session. Claude runtimes are defined in Autonomous Development's config.toml."
     )
   );
-  wrap.appendChild(
-    el(
-      'p',
-      { class: 'muted small' },
-      'Selection applies to newly launched Claude Code sessions only. It does not change the provider of an already-running session.'
-    )
-  );
+  wrap.appendChild(el('p', { class: 'muted small' }, 'Changing this affects new sessions only.'));
 
   const grid = el('div', { class: 'grid' });
   grid.appendChild(el('label', { for: 'claude-select', class: 'field-label' }, 'Selected runtime'));
@@ -323,6 +389,14 @@ function renderClaude(view: ConfigView): HTMLElement {
 function renderPhases(view: ConfigView): HTMLElement {
   const wrap = el('section', { class: 'panel' });
   wrap.appendChild(el('h2', {}, 'Codex phases'));
+  const profileLocation = view.codexHome ?? '$CODEX_HOME (normally ~/.codex)';
+  wrap.appendChild(
+    el(
+      'p',
+      { class: 'muted small' },
+      `Choose the Codex profile and reasoning effort used for each autonomous phase. Profiles are discovered from <profile-name>.config.toml files in ${profileLocation}.`
+    )
+  );
   const preset = view.activePreset ?? '';
   for (const phase of view.phases) {
     wrap.appendChild(renderPhaseCard(view, phase, preset));
@@ -337,6 +411,7 @@ function renderPhaseCard(
 ): HTMLElement {
   const card = el('div', { class: 'phase-card' });
   card.appendChild(el('h3', {}, phase.title));
+  card.appendChild(el('p', { class: 'phase-description' }, phaseDescription(phase.phase)));
 
   const grid = el('div', { class: 'grid' });
 
@@ -439,6 +514,19 @@ function renderPhaseCard(
   return card;
 }
 
+function phaseDescription(phase: ConfigView['phases'][number]['phase']): string {
+  switch (phase) {
+    case 'enhance':
+      return 'Refines the initial feature request before planning.';
+    case 'plan':
+      return 'Produces an independent implementation plan.';
+    case 'review':
+      return 'Reviews the implementation after verification.';
+    case 'adversarial':
+      return 'Challenges assumptions and risks for rigorous or high-risk work.';
+  }
+}
+
 function renderValidation(view: ConfigView): HTMLElement {
   const wrap = el('section', { class: 'panel' });
   wrap.appendChild(el('h2', {}, 'Validation'));
@@ -452,7 +540,9 @@ function renderValidation(view: ConfigView): HTMLElement {
       wrap.appendChild(ul);
     }
   } else {
-    wrap.appendChild(el('p', { class: 'warning' }, view.validation.error ?? 'Configuration is invalid.'));
+    wrap.appendChild(
+      el('p', { class: 'warning' }, view.validation.error ?? 'Configuration is invalid.')
+    );
   }
   const btn = el('button', { type: 'button' }, 'Re-validate') as HTMLButtonElement;
   btn.addEventListener('click', () => post({ type: 'validate' }));

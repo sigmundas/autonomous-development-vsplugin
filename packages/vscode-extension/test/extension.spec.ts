@@ -27,6 +27,8 @@ const CONTRIBUTED_COMMANDS = [
   'acceptDrift',
   'cancelRun',
   'archiveRun',
+  'authorizeReview',
+  'continueBlockedRun',
   'revealRunDirectory',
   'setupController',
   'configure',
@@ -180,11 +182,11 @@ describe('per-scenario workflow model (single shared evaluator)', () => {
     assert.equal(model?.recommendedNextAction.code, 'none');
   });
 
-  it('blocked → blockingReason + blocked action', () => {
+  it('blocked → blockingReason + continuation action', () => {
     const model = run('blocked').model;
     assert.equal(model?.status, 'blocked');
     assert.equal(model?.blockingReason, 'Review-round budget exhausted');
-    assert.equal(model?.recommendedNextAction.code, 'blocked');
+    assert.equal(model?.recommendedNextAction.code, 'continue-blocked');
   });
 
   it('cancelled → no further action', () => {

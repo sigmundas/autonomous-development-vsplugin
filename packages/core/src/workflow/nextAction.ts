@@ -19,6 +19,9 @@ import type { RunStatus } from '../types';
 export type NextActionCode =
   | 'none'
   | 'blocked'
+  | 'allow-review'
+  | 'continue-blocked'
+  | 'resume-adversarial'
   | 'run-enhance'
   | 'reconcile-spec'
   | 'reconcile-plan'
@@ -36,7 +39,10 @@ export interface NextAction {
 
 const MESSAGES: Readonly<Record<NextActionCode, string>> = {
   none: '',
-  blocked: 'Review the blocking reason; cancel or start a new run',
+  blocked: 'Review the blocking reason and preserve or archive the run',
+  'allow-review': 'Allow one additional confirmation review for this run',
+  'continue-blocked': 'Continue remaining findings in a linked follow-up run',
+  'resume-adversarial': 'Continue in a linked follow-up and run the missing adversarial review',
   'run-enhance': 'Run Codex enhance',
   'reconcile-spec': 'Reconcile the Codex proposal and create accepted-spec.md',
   'reconcile-plan': 'Reconcile the Codex plan and create accepted-plan.md',
@@ -55,6 +61,7 @@ export function nextAction(code: NextActionCode): NextAction {
 
 export interface NextActionFacts {
   readonly status: RunStatus;
+  readonly phase?: string;
   readonly hasEnhance: boolean;
   readonly acceptedSpecExists: boolean;
   readonly acceptedPlanExists: boolean;
@@ -75,6 +82,7 @@ export interface NextActionFacts {
    * (controller.py ~3176).
    */
   readonly cumulativeUnresolvedSevere?: boolean;
+  readonly blockingAcceptanceCriteria?: boolean;
   readonly requiresAdversarial: boolean;
   readonly hasAdversarial: boolean;
   readonly latestAdversarialVerdict?: string;
@@ -89,8 +97,17 @@ export function recommendNextAction(f: NextActionFacts): NextAction {
   if (f.status === 'cancelled' || f.status === 'archived' || f.status === 'complete') {
     return nextAction('none');
   }
+  if (f.phase === 'review-budget-exhausted' && f.status === 'active') {
+    return nextAction('allow-review');
+  }
   if (f.status === 'blocked') {
-    return nextAction('blocked');
+    if (f.requiresAdversarial && (!f.hasAdversarial || !isPass(f.latestAdversarialVerdict))) {
+      return nextAction('resume-adversarial');
+    }
+    if (f.cumulativeUnresolvedSevere || f.blockingAcceptanceCriteria) {
+      return nextAction('continue-blocked');
+    }
+    return nextAction('continue-blocked');
   }
 
   // controller.py:compute_next_action — first match wins.

@@ -85,6 +85,14 @@ describe('toDashboardView', () => {
     assert.equal(view.repository.worktreePath, '/work/current');
   });
 
+  it('surfaces the discovered continuation on its immutable parent', () => {
+    const parent = find('blocked');
+    const view = toDashboardView(parent, loadEventLog(parent.runDir), {
+      continuedByRunId: 'continuation-1'
+    });
+    assert.equal(view.recovery.continuedByRunId, 'continuation-1');
+  });
+
   it('attaches semantic summaries to the enhanced spec and proposed plan artifacts (F-301)', () => {
     const view = viewFor('complete');
     const enhance = view.artifacts.find((a) => a.command === 'autonomousDev.openEnhancedSpec');

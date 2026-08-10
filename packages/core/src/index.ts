@@ -161,6 +161,7 @@ export {
   type ControllerInitMode,
   type ControllerPhase,
   type ControllerReasoningEffort,
+  type ControllerRecoveryIntent,
   type ControllerContext,
   type ControllerOptions,
   type ControllerCommandLine

@@ -281,6 +281,10 @@ describe('toDashboardView', () => {
       assert.equal(view.codexUsage.totalDurationSeconds, 20.75);
       const enhance = view.codexUsage.runs.find((r) => r.phase === 'enhance');
       assert.equal(enhance?.totalTokens, 1300);
+      assert.equal(enhance?.sessionResumeCapability, 'supported');
+      const review = view.codexUsage.runs.find((r) => r.phase === 'review');
+      assert.equal(review?.sessionResumeCapability, 'unsupported');
+      assert.equal(review?.sessionFallback, false);
     });
   });
 });

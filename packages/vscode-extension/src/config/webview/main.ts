@@ -23,6 +23,7 @@ interface ConfigView {
   activePreset?: string;
   workflowMode?: string;
   maxReviewRounds?: number;
+  reuseCodexReviewContext: boolean;
   claudeRuntime?: {
     name: string;
     displayName: string;
@@ -306,12 +307,28 @@ function renderGeneral(view: ConfigView): HTMLElement {
     )
   );
 
+  grid.appendChild(
+    el('label', { for: 'review-context-reuse', class: 'field-label' }, 'Codex review context')
+  );
+  const reuse = document.createElement('input');
+  reuse.type = 'checkbox';
+  reuse.id = 'review-context-reuse';
+  reuse.checked = view.reuseCodexReviewContext;
+  reuse.disabled = !view.trusted;
+  reuse.title =
+    'Regular review rounds may reuse one reviewer session; adversarial review uses a separate session. Planning and enhancement never share either session. Sessions rotate after a bounded window. Disable to start every review round fresh.';
+  reuse.addEventListener('change', () => {
+    saving = true;
+    vscode.postMessage({ type: 'setReviewContextReuse', enabled: reuse.checked });
+  });
+  grid.appendChild(reuse);
+
   wrap.appendChild(grid);
   wrap.appendChild(
     el(
       'p',
       { class: 'muted small' },
-      "These settings can't be edited here yet. To change them, open config.toml from the setup section, edit it, and then click Refresh."
+      'Reviewer context reuse applies to new runs only. Regular and adversarial reviewers remain independent; bounded rotation still applies.'
     )
   );
   return wrap;

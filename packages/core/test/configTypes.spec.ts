@@ -19,7 +19,8 @@ describe('parseEffectiveConfiguration (config-show contract)', () => {
         workflow: {
           max_review_rounds: 3,
           process_timeout_seconds: 3600,
-          workflow_mode: 'standard'
+          workflow_mode: 'standard',
+          reuse_codex_review_context: true
         },
         codex: {
           plan: { profile: 'azure-gpt5p6-sol', reasoning_effort: 'high' },
@@ -38,6 +39,7 @@ describe('parseEffectiveConfiguration (config-show contract)', () => {
       assert.equal(parsed.value.activePreset, 'azure-autonomous');
       assert.equal(parsed.value.effective.workflow.workflowMode, 'standard');
       assert.equal(parsed.value.effective.workflow.maxReviewRounds, 3);
+      assert.equal(parsed.value.effective.workflow.reuseCodexReviewContext, true);
       assert.equal(parsed.value.effective.codex.plan?.reasoningEffort, 'high');
       assert.equal(parsed.value.effective.claudeRuntime, 'azure-claude');
       assert.deepEqual(parsed.value.presets, ['azure-autonomous', 'openai-anthropic']);
@@ -210,6 +212,14 @@ describe('parseRunConfigSnapshot', () => {
           plan: { profile: 'azure-gpt5p6-sol', reasoning_effort: 'high', model: 'gpt-init' }
         },
         claude_runtime: 'azure-claude',
+        claude_runtime_snapshot: {
+          name: 'azure-claude',
+          display_name: 'Azure · Claude',
+          launcher: '/usr/local/bin/claude-azure',
+          args: ['--profile', 'initial'],
+          allowed_commands: ['ruff', 'npm run test'],
+          executable_paths: ['/opt/homebrew/bin', '~/.local/bin']
+        },
         claude_model: { id: 'sonnet', display_name: 'Sonnet', model: 'sonnet-exact' }
       }
     });
@@ -220,6 +230,12 @@ describe('parseRunConfigSnapshot', () => {
       assert.equal(snap.codex.plan?.profile, 'azure-gpt5p6-sol');
       assert.equal(snap.codex.plan?.reasoningEffort, 'high');
       assert.equal(snap.claudeRuntime, 'azure-claude');
+      assert.deepEqual(snap.claudeRuntimeSnapshot?.args, ['--profile', 'initial']);
+      assert.deepEqual(snap.claudeRuntimeSnapshot?.allowedCommands, ['ruff', 'npm run test']);
+      assert.deepEqual(snap.claudeRuntimeSnapshot?.executablePaths, [
+        '/opt/homebrew/bin',
+        '~/.local/bin'
+      ]);
       assert.equal(snap.claudeModel?.model, 'sonnet-exact');
     }
   });

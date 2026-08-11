@@ -93,6 +93,18 @@ describe('buildControllerCommand — config subcommands', () => {
     assert.equal(args[args.length - 1], 'azure-claude');
   });
 
+  it('config-set-review-context-reuse serializes an explicit boolean', () => {
+    assert.throws(
+      () => buildControllerCommand(ctx, 'config-set-review-context-reuse'),
+      /requires enabled/
+    );
+    const command = buildControllerCommand(ctx, 'config-set-review-context-reuse', {
+      enabled: true
+    });
+    assert.equal(command.mutating, true);
+    assert.deepEqual(command.args.slice(-2), ['config-set-review-context-reuse', 'true']);
+  });
+
   it('config-set-phase requires --preset and --phase', () => {
     assert.throws(() => buildControllerCommand(ctx, 'config-set-phase'), /--preset/);
     assert.throws(

@@ -12,7 +12,8 @@ import {
   resumeRunInClaude,
   resolveRuntimeForRun,
   snapshotFor,
-  worktreeForRun
+  worktreeForRun,
+  type ResumeInClaudeDeps
 } from '../src/config/resumeInClaude';
 import {
   ClaudeTerminalRegistry,
@@ -159,11 +160,7 @@ describe('resumeInClaude — runtime resolution', () => {
   it('never invents a runtime if the snapshot names a missing one AND a different global exists', () => {
     // Reasserts the invariant: snapshot precedence forbids silent substitution.
     const run = makeRun({ snapshot: { claude_runtime: 'gone', codex: {} } });
-    const { runtime, source } = resolveRuntimeForRun(
-      run,
-      [AZURE, ANTHROPIC],
-      'anthropic-claude'
-    );
+    const { runtime, source } = resolveRuntimeForRun(run, [AZURE, ANTHROPIC], 'anthropic-claude');
     assert.equal(runtime, undefined);
     assert.notEqual(source.kind, 'fallback');
     assert.equal(source.kind, 'unavailable');
@@ -216,10 +213,7 @@ describe('resumeInClaude — plan construction', () => {
     const run = makeRun({ snapshot: { claude_runtime: 'quirky', codex: {} } });
     const plan = planResumeInClaude(run, [trouble], undefined, controllerPath, '/work/repo');
     // Bare token whitespace must be quoted; adversarial shell chars must be quoted.
-    assert.deepEqual(plan.launcherArgv.slice(0, 2), [
-      '/opt/quirky bin/claude',
-      'a; rm -rf $HOME'
-    ]);
+    assert.deepEqual(plan.launcherArgv.slice(0, 2), ['/opt/quirky bin/claude', 'a; rm -rf $HOME']);
   });
 
   it('bootstraps the dedicated Resume skill with the exact run id', () => {
@@ -234,10 +228,7 @@ describe('resumeInClaude — plan construction', () => {
     );
     assert.match(plan.instruction, /Do not call controller\.py init/);
     assert.match(plan.instruction, /do not initialize or create a run/);
-    assert.equal(
-      plan.bootstrapPrompt,
-      `${AUTONOMOUS_RESUME_SKILL} 20260806T091439Z-cafefacefade`
-    );
+    assert.equal(plan.bootstrapPrompt, `${AUTONOMOUS_RESUME_SKILL} 20260806T091439Z-cafefacefade`);
     assert.equal(plan.launcherArgv.at(-1), plan.bootstrapPrompt);
     assert.equal(plan.launcherArgv.at(-3), '--append-system-prompt');
     assert.equal(plan.launcherArgv.at(-2), plan.instruction);
@@ -449,6 +440,49 @@ describe('resumeRunInClaude — terminal reuse and concurrency', () => {
     assert.equal(options.shellArgs?.at(-3), '--append-system-prompt');
     assert.match(String(options.shellArgs?.at(-2)), /Do not call controller\.py init/);
     assert.match(String(options.shellArgs?.at(-1)), /autonomous-resume/);
+    registry.dispose();
+  });
+
+  it('records rollover only after a replacement terminal is registered', async () => {
+    const registry = executorRegistry();
+    const run = makeRun({
+      worktreePath: '/work/repo',
+      snapshot: { claude_runtime: AZURE.name, codex: {} }
+    });
+    const terminal = executorTerminal();
+    let recorded = 0;
+    const deps = executorDeps(registry, () => terminal) as ResumeInClaudeDeps;
+    await resumeRunInClaude(run, {
+      ...deps,
+      onLaunched: async () => {
+        assert.strictEqual(registry.get(terminalIdentityForRun(run)), terminal);
+        recorded += 1;
+      }
+    });
+    assert.equal(recorded, 1);
+    registry.dispose();
+  });
+
+  it('does not record rollover when terminal creation fails', async () => {
+    const registry = executorRegistry();
+    const run = makeRun({
+      worktreePath: '/work/repo',
+      snapshot: { claude_runtime: AZURE.name, codex: {} }
+    });
+    let recorded = 0;
+    const deps = executorDeps(registry, () => {
+      throw new Error('terminal creation failed');
+    }) as ResumeInClaudeDeps;
+    await assert.rejects(
+      resumeRunInClaude(run, {
+        ...deps,
+        onLaunched: async () => {
+          recorded += 1;
+        }
+      }),
+      /terminal creation failed/
+    );
+    assert.equal(recorded, 0);
     registry.dispose();
   });
 

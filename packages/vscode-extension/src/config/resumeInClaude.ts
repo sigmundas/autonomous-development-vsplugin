@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { accessSync, constants, existsSync } from 'node:fs';
 
 import * as vscode from 'vscode';
 import {
@@ -40,6 +41,8 @@ export interface ResumeInClaudeDeps {
    */
   readonly showInfo?: (message: string) => Thenable<string | undefined>;
   readonly showError?: (message: string) => Thenable<string | undefined>;
+  /** Persist successful fresh-session telemetry after terminal registration. */
+  readonly onLaunched?: () => Promise<void>;
 }
 
 /** Reasoning behind the runtime the resume command ultimately selected. */
@@ -112,6 +115,23 @@ export function resolveRuntimeForRun(
   const snapshotRuntimeName = snap?.claudeRuntime;
 
   if (snap && snapshotRuntimeName) {
+    if (snap.claudeRuntimeSnapshot?.name === snapshotRuntimeName) {
+      const runtime = snap.claudeRuntimeSnapshot;
+      const launcherExists = runtime.launcher ? existsSync(runtime.launcher) : false;
+      let launcherExecutable = false;
+      if (runtime.launcher && launcherExists) {
+        try {
+          accessSync(runtime.launcher, constants.X_OK);
+          launcherExecutable = true;
+        } catch {
+          launcherExecutable = false;
+        }
+      }
+      return {
+        runtime: { ...runtime, launcherExists, launcherExecutable },
+        source: { kind: 'snapshot', runtimeName: snapshotRuntimeName }
+      };
+    }
     const runtime = runtimes.find((r) => r.name === snapshotRuntimeName);
     if (runtime) {
       return {
@@ -489,6 +509,11 @@ async function runResumeInClaude(
   const terminal = create(buildTerminalOptions(plan));
   terminal.show();
   registry?.register(identity, terminal);
+
+  // A rollover record means terminal creation and registration succeeded. If
+  // persistence fails after launch, keep the truthful under-count and surface
+  // the error; never pre-count a launch that might fail validation or creation.
+  await deps.onLaunched?.();
 
   const fallbackNote =
     plan.source.kind === 'fallback'

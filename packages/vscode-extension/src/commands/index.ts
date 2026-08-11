@@ -386,4 +386,26 @@ export function registerCommands(deps: CommandDeps): void {
       }
     })
   );
+  register(
+    'autonomousDev.continueFreshClaudeSession',
+    runScoped(async (run) => {
+      const identity = terminalIdentityForRun(run);
+      if (deps.terminalRegistry.has(identity)) {
+        deps.terminalRegistry.focus(identity);
+        void vscode.window.showWarningMessage(
+          `Close the current extension-managed Claude terminal for run ${run.runId} at a safe boundary, then choose “Continue in fresh Claude session” again. The extension cannot prove an interactive terminal has stopped mutating the checkout, so it will not kill and replace it automatically.`
+        );
+        return;
+      }
+      await resumeRunInClaude(run, {
+        store: deps.configStore,
+        log,
+        registry: deps.terminalRegistry,
+        getControllerPath: () => deps.getConfig().controllerPath,
+        onLaunched: async () => {
+          await service.executeForRun('record-claude-rollover', run);
+        }
+      });
+    })
+  );
 }

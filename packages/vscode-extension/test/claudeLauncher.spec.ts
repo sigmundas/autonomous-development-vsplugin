@@ -40,6 +40,17 @@ describe('claudeLauncher argv and permission policy', () => {
     );
   });
 
+  it('passes exact Sonnet and Opus snapshot values and omits Default', () => {
+    const base = ['/usr/local/bin/claude'];
+    for (const [id, model] of [
+      ['sonnet46', 'claude-sonnet-4-6'],
+      ['opus48', 'claude-opus-4-8']
+    ] as const) {
+      assert.deepEqual(withClaudeModel(base, { id, model }), [base[0], '--model', model]);
+    }
+    assert.equal(withClaudeModel(base, undefined).includes('--model'), false);
+  });
+
   it('renders one canonical bounded permission policy for autonomous sessions', () => {
     assert.deepEqual(autonomousClaudePermissionArgs(), [
       '--permission-mode',
@@ -79,8 +90,12 @@ describe('claudeLauncher argv and permission policy', () => {
     const rules = args[args.indexOf('--allowedTools') + 1]?.split(',') ?? [];
     assert.ok(rules.includes('Bash(ruff:*)'));
     assert.throws(() => bashPermissionRule('uv --version && git push'), /Unsafe/);
-    assert.throws(() => bashPermissionRule('bash'), /cannot grant a shell/);
-    assert.throws(() => bashPermissionRule('git reset'), /unsafe Git/);
+    for (const shell of ['bash', 'sh', 'zsh', 'fish', 'powershell', 'pwsh', 'cmd', 'cmd.exe']) {
+      assert.throws(() => bashPermissionRule(shell), /cannot grant a shell/);
+    }
+    for (const git of ['git', 'git reset', 'git push']) {
+      assert.throws(() => bashPermissionRule(git), /unsafe Git/);
+    }
     assert.equal(
       (AUTONOMOUS_CLAUDE_DEFAULT_COMMANDS as readonly string[]).includes('git reset'),
       false

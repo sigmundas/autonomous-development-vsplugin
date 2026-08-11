@@ -216,6 +216,17 @@ function renderHeader(view: DashboardView): HTMLElement {
               "Launch the run's snapshotted Claude runtime rooted at its worktree and continue from the recorded phase."
           })
       : null,
+    canResume
+      ? button(
+          'Continue in fresh Claude session',
+          () => command('autonomousDev.continueFreshClaudeSession'),
+          {
+            title: terminalOpen
+              ? 'Focus the existing session so you can close it at a safe boundary; launch is allowed only after it is closed.'
+              : 'Launch a new transcript for this same controller run using bounded continuation context and the snapshotted runtime/model.'
+          }
+        )
+      : null,
     canCancel
       ? button('Cancel run', () => command('autonomousDev.cancelRun'), { class: 'danger' })
       : null,
@@ -225,6 +236,9 @@ function renderHeader(view: DashboardView): HTMLElement {
   return el('header', { class: 'card header' }, [
     renderTaskBlock(view),
     badges,
+    el('p', { class: 'muted small' }, [
+      'Claude context: unavailable (no reliable machine-readable signal)'
+    ]),
     view.blockingReason
       ? el('p', { class: 'blocking' }, [`Blocked: ${view.blockingReason}`])
       : null,
@@ -553,6 +567,11 @@ function renderCodexUsage(view: DashboardView): HTMLElement | null {
   const rows = usage.runs.map((r) =>
     el('tr', {}, [
       el('td', {}, [r.phase ?? '—']),
+      el('td', {}, [
+        r.sessionMode
+          ? `${r.sessionMode} ${r.sessionFamily ?? 'session'}${r.sessionResumeCapability === 'unsupported' ? ' · resume unsupported' : ''}${r.sessionRotation ? ' · rotated' : ''}${r.sessionFallback ? ' · fallback' : ''}`
+          : ''
+      ]),
       el('td', {}, [r.model ?? '']),
       el('td', {}, [r.durationSeconds !== undefined ? `${r.durationSeconds.toFixed(1)}s` : '']),
       el('td', {}, [r.totalTokens !== undefined ? String(r.totalTokens) : '']),
@@ -563,7 +582,7 @@ function renderCodexUsage(view: DashboardView): HTMLElement | null {
   const head = el(
     'tr',
     {},
-    ['Phase', 'Model', 'Duration', 'Tokens', 'Prompt chars', 'Output chars'].map((h) =>
+    ['Phase', 'Session', 'Model', 'Duration', 'Tokens', 'Prompt chars', 'Output chars'].map((h) =>
       el('th', {}, [h])
     )
   );
@@ -835,6 +854,10 @@ function renderConfigSnapshot(view: DashboardView): HTMLElement | null {
       snap.claudeModel?.displayName ?? snap.claudeModel?.id ?? 'Default'
     ),
     kv('Workflow mode (this run)', snap.workflowMode ?? '—'),
+    kv(
+      'Codex reviewer context reuse',
+      snap.reuseCodexReviewContext === true ? 'Enabled' : 'Disabled'
+    ),
     kv(
       'Maximum review rounds (this run)',
       snap.maxReviewRounds !== undefined ? String(snap.maxReviewRounds) : '—'

@@ -20,6 +20,7 @@ export type ControllerSubcommand =
   | 'start-followup-run'
   | 'cancel'
   | 'archive-run'
+  | 'record-claude-rollover'
   | 'config-show'
   | 'config-validate'
   | 'config-list-profiles'
@@ -29,7 +30,8 @@ export type ControllerSubcommand =
   | 'config-set-active-preset'
   | 'config-set-phase'
   | 'config-set-claude-runtime'
-  | 'config-set-claude-model';
+  | 'config-set-claude-model'
+  | 'config-set-review-context-reuse';
 
 /** Workflow rigor modes accepted by `controller.py init --mode`. */
 export type ControllerInitMode = 'auto' | 'lean' | 'standard' | 'rigorous';
@@ -53,10 +55,12 @@ const MUTATING: ReadonlySet<ControllerSubcommand> = new Set([
   'start-followup-run',
   'cancel',
   'archive-run',
+  'record-claude-rollover',
   'config-set-active-preset',
   'config-set-phase',
   'config-set-claude-runtime',
-  'config-set-claude-model'
+  'config-set-claude-model',
+  'config-set-review-context-reuse'
 ]);
 
 /** Commands that must be scoped to an explicit --run-id. */
@@ -69,7 +73,8 @@ const RUN_SCOPED: ReadonlySet<ControllerSubcommand> = new Set([
   'continue-run',
   'start-followup-run',
   'cancel',
-  'archive-run'
+  'archive-run',
+  'record-claude-rollover'
 ]);
 
 /**
@@ -86,7 +91,8 @@ const CONFIG_SUBCOMMANDS: ReadonlySet<ControllerSubcommand> = new Set([
   'config-set-active-preset',
   'config-set-phase',
   'config-set-claude-runtime',
-  'config-set-claude-model'
+  'config-set-claude-model',
+  'config-set-review-context-reuse'
 ]);
 
 export function isMutatingSubcommand(sub: ControllerSubcommand): boolean {
@@ -151,6 +157,8 @@ export interface ControllerOptions {
   readonly reasoningSummary?: string;
   /** config-set-phase: --verbosity. */
   readonly verbosity?: string;
+  /** config-set-review-context-reuse: positional boolean. */
+  readonly enabled?: boolean;
 }
 
 export interface ControllerCommandLine {
@@ -192,6 +200,9 @@ export function buildControllerCommand(
     if (!options.phase) {
       throw new Error('Controller subcommand "config-set-phase" requires --phase');
     }
+  }
+  if (sub === 'config-set-review-context-reuse' && options.enabled === undefined) {
+    throw new Error('Controller subcommand "config-set-review-context-reuse" requires enabled');
   }
 
   const args: string[] = [ctx.controllerPath];
@@ -256,6 +267,9 @@ export function buildControllerCommand(
       break;
     case 'config-set-claude-model':
       if (options.name) args.push(options.name);
+      break;
+    case 'config-set-review-context-reuse':
+      args.push(options.enabled ? 'true' : 'false');
       break;
     case 'config-set-phase':
       args.push('--preset', options.configPreset as string);

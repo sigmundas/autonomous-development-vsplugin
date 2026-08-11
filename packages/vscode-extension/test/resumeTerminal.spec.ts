@@ -50,6 +50,62 @@ function makeRun(snapshot: unknown, worktreePath: string): DiscoveredRun {
 }
 
 describe('buildTerminalOptions — direct launcher process (no shell interposition)', () => {
+  it('pins allowed commands, executable paths, and model for resume and fresh-session plans', () => {
+    const snapshot = {
+      claude_runtime: 'azure-claude',
+      claude_runtime_snapshot: {
+        name: 'azure-claude',
+        display_name: 'Snapshot runtime',
+        launcher: '/snapshot/bin/claude',
+        args: ['--profile', 'snapshot'],
+        allowed_commands: ['ruff', 'npm run test'],
+        executable_paths: ['/opt/homebrew/bin', '~/.local/bin']
+      },
+      claude_model: { id: 'sonnet46', model: 'claude-sonnet-4-6' },
+      codex: {}
+    };
+    const run = makeRun(snapshot, '/work/wt');
+    const changedGlobal: ClaudeRuntime = {
+      ...RUNTIME,
+      args: ['--profile', 'changed-global'],
+      allowedCommands: ['pytest'],
+      executablePaths: ['/changed/bin']
+    };
+
+    const initial = planResumeInClaude(
+      run,
+      [RUNTIME],
+      'azure-claude',
+      '/opt/autodev/scripts/controller.py',
+      '/work/wt'
+    );
+    const fresh = planResumeInClaude(
+      run,
+      [changedGlobal],
+      'azure-claude',
+      '/opt/autodev/scripts/controller.py',
+      '/work/wt'
+    );
+
+    assert.deepEqual(initial.runtime?.allowedCommands, ['ruff', 'npm run test']);
+    assert.deepEqual(fresh.runtime?.allowedCommands, initial.runtime?.allowedCommands);
+    assert.deepEqual(initial.runtime?.executablePaths, ['/opt/homebrew/bin', '~/.local/bin']);
+    assert.deepEqual(fresh.runtime?.executablePaths, initial.runtime?.executablePaths);
+    assert.deepEqual(fresh.launcherArgv, initial.launcherArgv);
+    assert.equal(
+      fresh.launcherArgv[fresh.launcherArgv.indexOf('--model') + 1],
+      'claude-sonnet-4-6'
+    );
+    const allowedTools = fresh.launcherArgv[fresh.launcherArgv.indexOf('--allowedTools') + 1];
+    assert.match(allowedTools ?? '', /Bash\(ruff:\*\)/);
+    assert.match(allowedTools ?? '', /Bash\(npm run test:\*\)/);
+    const terminal = buildTerminalOptions(fresh);
+    const launchedPath = terminal.env?.['PATH'];
+    assert.match(launchedPath ?? '', /\/opt\/homebrew\/bin/);
+    assert.match(launchedPath ?? '', /\.local\/bin/);
+    assert.doesNotMatch(launchedPath ?? '', /\/changed\/bin/);
+  });
+
   it('uses only the snapshotted model and keeps legacy snapshots model-free', () => {
     const selected = makeRun(
       {

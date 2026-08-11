@@ -135,6 +135,10 @@ export class ConfigClient {
     });
   }
 
+  async setReviewContextReuse(enabled: boolean): Promise<void> {
+    await this.service.executeGlobal('config-set-review-context-reuse', { enabled });
+  }
+
   async setPhase(args: {
     preset: string;
     phase: ControllerPhase;

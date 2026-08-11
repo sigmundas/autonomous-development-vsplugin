@@ -700,6 +700,11 @@ function normalizeCodexRuns(value: unknown): CodexRun[] {
       startedAt?: string;
       eventsArtifact?: string;
       outputArtifact?: string;
+      sessionFamily?: string;
+      sessionMode?: string;
+      round?: number;
+      sessionRotation?: boolean;
+      sessionFallback?: boolean;
       tokens?: CodexRunTokens;
     } = {};
     const phase = asNonEmptyString(entry['phase']);
@@ -722,6 +727,16 @@ function normalizeCodexRuns(value: unknown): CodexRun[] {
     if (eventsArtifact) run.eventsArtifact = eventsArtifact;
     const outputArtifact = asNonEmptyString(entry['output_artifact']);
     if (outputArtifact) run.outputArtifact = outputArtifact;
+    const sessionFamily = asNonEmptyString(entry['session_family']);
+    if (sessionFamily) run.sessionFamily = sessionFamily;
+    const sessionMode = asNonEmptyString(entry['session_mode']);
+    if (sessionMode) run.sessionMode = sessionMode;
+    const round = asInt(entry['round']);
+    if (round !== undefined) run.round = round;
+    if (typeof entry['session_rotation'] === 'boolean')
+      run.sessionRotation = entry['session_rotation'];
+    if (typeof entry['session_fallback'] === 'boolean')
+      run.sessionFallback = entry['session_fallback'];
     const tokens = normalizeCodexRunTokens(entry['tokens']);
     if (tokens) run.tokens = tokens;
     runs.push(run);

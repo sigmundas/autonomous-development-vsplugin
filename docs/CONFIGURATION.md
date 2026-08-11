@@ -4,6 +4,17 @@ Autonomous Development uses its own `config.toml` for workflow choices. Codex
 profiles are separate TOML files in your Codex home. A preset connects those
 pieces for each new autonomous run.
 
+The configuration panel exposes **Reuse Codex reviewer context between
+rounds**. It applies to new runs and is snapshotted for reproducibility.
+Regular and adversarial reviews use separate sessions; planning and enhancement
+never share them. Sessions rotate after a bounded window, and disabling the
+option starts every review round fresh.
+
+Active-run dashboards provide **Continue in fresh Claude session**. The current
+terminal integration has no reliable machine-readable context measurement, so
+context is reported as unavailable. A live managed terminal must be closed at
+a safe boundary before the extension launches the replacement for the same run.
+
 ## Quick setup
 
 1. In VS Code, run **Autonomous Development: Set Up Controller** and select the

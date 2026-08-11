@@ -76,18 +76,22 @@ describe('refineStagesForImplementerRunning — Rule 1 (Implementing stays activ
     );
   });
 
-  it('holds Implementing at active while a Claude terminal is alive AND phase is plan-accepted', () => {
-    const canonical = makeStages({ implementing: 'pending', verification: 'pending' });
+  it('does not mark Implementing active while a Claude terminal is alive during plan acceptance', () => {
+    const canonical = makeStages({
+      'plan-accepted': 'active',
+      implementing: 'pending',
+      verification: 'pending'
+    });
     const stages = refineStagesForImplementerRunning(canonical, {
       claudeTerminalOpen: true,
       controllerPhase: 'plan-accepted',
       hasChecks: false,
       status: 'active'
     });
-    assert.equal(byId(stages).get('implementing')?.status, 'active');
+    assert.equal(byId(stages).get('implementing')?.status, 'pending');
     assert.deepEqual(
       stages.filter((stage) => stage.status === 'active').map((stage) => stage.id),
-      ['implementing']
+      ['plan-accepted']
     );
   });
 
@@ -222,7 +226,7 @@ describe('refineStagesForImplementerRunning — combined rules', () => {
     assert.equal(refined.get('verification')?.status, 'pending');
   });
 
-  it('terminal alive + phase=plan-accepted + hasChecks=false: Impl=active, Verification=pending', () => {
+  it('terminal alive + phase=plan-accepted + hasChecks=false: Impl=pending, Verification=pending', () => {
     const canonical = makeStages({ implementing: 'pending', verification: 'pending' });
     const refined = byId(
       refineStagesForImplementerRunning(canonical, {
@@ -232,7 +236,7 @@ describe('refineStagesForImplementerRunning — combined rules', () => {
         status: 'active'
       })
     );
-    assert.equal(refined.get('implementing')?.status, 'active');
+    assert.equal(refined.get('implementing')?.status, 'pending');
     assert.equal(refined.get('verification')?.status, 'pending');
   });
 

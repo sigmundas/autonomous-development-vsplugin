@@ -23,6 +23,7 @@ type WebviewInbound =
   | { readonly type: 'setPreset'; readonly name: string }
   | { readonly type: 'setClaudeRuntime'; readonly name: string }
   | { readonly type: 'setClaudeModel'; readonly id?: string }
+  | { readonly type: 'setReviewContextReuse'; readonly enabled: boolean }
   | {
       readonly type: 'setPhase';
       readonly preset: string;
@@ -46,6 +47,7 @@ export interface ConfigView {
   readonly activePreset?: string;
   readonly workflowMode?: string;
   readonly maxReviewRounds?: number;
+  readonly reuseCodexReviewContext: boolean;
   readonly claudeRuntime?: {
     readonly name: string;
     readonly displayName: string;
@@ -155,6 +157,7 @@ export function toView(snap: ConfigSnapshot): ConfigView {
     ...(effective?.effective.workflow.maxReviewRounds !== undefined
       ? { maxReviewRounds: effective.effective.workflow.maxReviewRounds }
       : {}),
+    reuseCodexReviewContext: effective?.effective.workflow.reuseCodexReviewContext ?? false,
     ...(runtime
       ? {
           claudeRuntime: {
@@ -314,6 +317,9 @@ export class ConfigPanel {
       case 'setClaudeModel':
         await this.setClaudeModel(parsed.id);
         return;
+      case 'setReviewContextReuse':
+        await this.setReviewContextReuse(parsed.enabled);
+        return;
       case 'setPhase':
         await this.setPhase(parsed);
         return;
@@ -401,6 +407,20 @@ export class ConfigPanel {
       );
     } catch (err) {
       this.reportError('Set Claude runtime', err);
+    }
+  }
+
+  private async setReviewContextReuse(enabled: boolean): Promise<void> {
+    if (!isWorkspaceTrusted()) {
+      void vscode.window.showErrorMessage('Configuration mutations require a trusted workspace.');
+      return;
+    }
+    try {
+      await this.client.setReviewContextReuse(enabled === true);
+      await this.store.refresh();
+      this.render();
+    } catch (err) {
+      this.reportError('Set Codex reviewer context reuse', err);
     }
   }
 

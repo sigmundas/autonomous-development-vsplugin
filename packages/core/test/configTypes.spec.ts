@@ -19,7 +19,8 @@ describe('parseEffectiveConfiguration (config-show contract)', () => {
         workflow: {
           max_review_rounds: 3,
           process_timeout_seconds: 3600,
-          workflow_mode: 'standard'
+          workflow_mode: 'standard',
+          reuse_codex_review_context: true
         },
         codex: {
           plan: { profile: 'azure-gpt5p6-sol', reasoning_effort: 'high' },
@@ -38,6 +39,7 @@ describe('parseEffectiveConfiguration (config-show contract)', () => {
       assert.equal(parsed.value.activePreset, 'azure-autonomous');
       assert.equal(parsed.value.effective.workflow.workflowMode, 'standard');
       assert.equal(parsed.value.effective.workflow.maxReviewRounds, 3);
+      assert.equal(parsed.value.effective.workflow.reuseCodexReviewContext, true);
       assert.equal(parsed.value.effective.codex.plan?.reasoningEffort, 'high');
       assert.equal(parsed.value.effective.claudeRuntime, 'azure-claude');
       assert.deepEqual(parsed.value.presets, ['azure-autonomous', 'openai-anthropic']);

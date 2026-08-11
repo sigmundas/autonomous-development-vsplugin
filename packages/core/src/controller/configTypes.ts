@@ -120,6 +120,7 @@ export interface WorkflowConfiguration {
   readonly maxReviewRounds?: number;
   readonly processTimeoutSeconds?: number;
   readonly workflowMode?: ControllerWorkflowMode;
+  readonly reuseCodexReviewContext?: boolean;
 }
 
 /** Response payload of `config-show`. */
@@ -229,6 +230,9 @@ function parseWorkflow(raw: unknown): WorkflowConfiguration {
       : {}),
     ...(asWorkflowMode(raw['workflow_mode'])
       ? { workflowMode: asWorkflowMode(raw['workflow_mode']) as ControllerWorkflowMode }
+      : {}),
+    ...(typeof raw['reuse_codex_review_context'] === 'boolean'
+      ? { reuseCodexReviewContext: raw['reuse_codex_review_context'] }
       : {})
   };
   return out;
@@ -436,6 +440,7 @@ export interface RunConfigSnapshot {
   readonly codex: Readonly<Record<string, PhaseConfiguration>>;
   readonly claudeRuntime?: string;
   readonly claudeModel?: ClaudeModel;
+  readonly claudeRuntimeSnapshot?: ClaudeRuntime;
 }
 
 /** Extract a config_snapshot from an arbitrary run-state object. */
@@ -450,6 +455,26 @@ export function parseRunConfigSnapshot(raw: unknown): RunConfigSnapshot | undefi
       codex[key] = parsePhase(value);
     }
   }
+  const runtimeRaw = isObject(snap['claude_runtime_snapshot'])
+    ? snap['claude_runtime_snapshot']
+    : undefined;
+  const runtimeName = runtimeRaw ? asString(runtimeRaw['name']) : undefined;
+  const runtimeSnapshot: ClaudeRuntime | undefined = runtimeName
+    ? {
+        name: runtimeName,
+        ...(asString(runtimeRaw?.['display_name'])
+          ? { displayName: asString(runtimeRaw?.['display_name']) as string }
+          : {}),
+        ...(asString(runtimeRaw?.['launcher'])
+          ? { launcher: asString(runtimeRaw?.['launcher']) as string }
+          : {}),
+        args: asStringArray(runtimeRaw?.['args']),
+        allowedCommands: asStringArray(runtimeRaw?.['allowed_commands']),
+        executablePaths: asStringArray(runtimeRaw?.['executable_paths']),
+        launcherExists: true,
+        launcherExecutable: true
+      }
+    : undefined;
   return {
     ...(asString(snap['preset']) ? { preset: asString(snap['preset']) as string } : {}),
     ...(isObject(snap['workflow']) ? { workflow: parseWorkflow(snap['workflow']) } : {}),
@@ -459,6 +484,7 @@ export function parseRunConfigSnapshot(raw: unknown): RunConfigSnapshot | undefi
       : {}),
     ...(parseClaudeModel(snap['claude_model'])
       ? { claudeModel: parseClaudeModel(snap['claude_model']) as ClaudeModel }
-      : {})
+      : {}),
+    ...(runtimeSnapshot ? { claudeRuntimeSnapshot: runtimeSnapshot } : {})
   };
 }

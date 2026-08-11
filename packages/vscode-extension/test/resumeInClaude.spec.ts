@@ -12,7 +12,8 @@ import {
   resumeRunInClaude,
   resolveRuntimeForRun,
   snapshotFor,
-  worktreeForRun
+  worktreeForRun,
+  type ResumeInClaudeDeps
 } from '../src/config/resumeInClaude';
 import {
   ClaudeTerminalRegistry,
@@ -449,6 +450,49 @@ describe('resumeRunInClaude — terminal reuse and concurrency', () => {
     assert.equal(options.shellArgs?.at(-3), '--append-system-prompt');
     assert.match(String(options.shellArgs?.at(-2)), /Do not call controller\.py init/);
     assert.match(String(options.shellArgs?.at(-1)), /autonomous-resume/);
+    registry.dispose();
+  });
+
+  it('records rollover only after a replacement terminal is registered', async () => {
+    const registry = executorRegistry();
+    const run = makeRun({
+      worktreePath: '/work/repo',
+      snapshot: { claude_runtime: AZURE.name, codex: {} }
+    });
+    const terminal = executorTerminal();
+    let recorded = 0;
+    const deps = executorDeps(registry, () => terminal) as ResumeInClaudeDeps;
+    await resumeRunInClaude(run, {
+      ...deps,
+      onLaunched: async () => {
+        assert.strictEqual(registry.get(terminalIdentityForRun(run)), terminal);
+        recorded += 1;
+      }
+    });
+    assert.equal(recorded, 1);
+    registry.dispose();
+  });
+
+  it('does not record rollover when terminal creation fails', async () => {
+    const registry = executorRegistry();
+    const run = makeRun({
+      worktreePath: '/work/repo',
+      snapshot: { claude_runtime: AZURE.name, codex: {} }
+    });
+    let recorded = 0;
+    const deps = executorDeps(registry, () => {
+      throw new Error('terminal creation failed');
+    }) as ResumeInClaudeDeps;
+    await assert.rejects(
+      resumeRunInClaude(run, {
+        ...deps,
+        onLaunched: async () => {
+          recorded += 1;
+        }
+      }),
+      /terminal creation failed/
+    );
+    assert.equal(recorded, 0);
     registry.dispose();
   });
 

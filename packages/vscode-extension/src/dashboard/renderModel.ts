@@ -272,7 +272,12 @@ function codexUsageView(model: CodexUsageModel): DashboardCodexUsage {
       ...(r.durationSeconds !== undefined ? { durationSeconds: r.durationSeconds } : {}),
       ...(r.promptCharacters !== undefined ? { promptCharacters: r.promptCharacters } : {}),
       ...(r.outputCharacters !== undefined ? { outputCharacters: r.outputCharacters } : {}),
-      ...(r.tokens?.totalTokens !== undefined ? { totalTokens: r.tokens.totalTokens } : {})
+      ...(r.tokens?.totalTokens !== undefined ? { totalTokens: r.tokens.totalTokens } : {}),
+      ...(r.sessionMode !== undefined ? { sessionMode: r.sessionMode } : {}),
+      ...(r.sessionFamily !== undefined ? { sessionFamily: r.sessionFamily } : {}),
+      ...(r.round !== undefined ? { round: r.round } : {}),
+      ...(r.sessionRotation !== undefined ? { sessionRotation: r.sessionRotation } : {}),
+      ...(r.sessionFallback !== undefined ? { sessionFallback: r.sessionFallback } : {})
     })),
     totalDurationSeconds: model.totalDurationSeconds,
     totalTokens: model.totalTokens
@@ -608,6 +613,9 @@ function toDashboardConfigSnapshot(snap: RunConfigSnapshot): DashboardConfigSnap
       : {}),
     ...(snap.workflow?.maxReviewRounds !== undefined
       ? { maxReviewRounds: snap.workflow.maxReviewRounds }
+      : {}),
+    ...(snap.workflow?.reuseCodexReviewContext !== undefined
+      ? { reuseCodexReviewContext: snap.workflow.reuseCodexReviewContext }
       : {}),
     ...(snap.claudeRuntime !== undefined ? { claudeRuntime: snap.claudeRuntime } : {}),
     ...(snap.claudeModel !== undefined ? { claudeModel: snap.claudeModel } : {}),

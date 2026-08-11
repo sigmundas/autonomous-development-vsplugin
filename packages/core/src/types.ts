@@ -277,6 +277,11 @@ export interface CodexRun {
   readonly startedAt?: string;
   readonly eventsArtifact?: string;
   readonly outputArtifact?: string;
+  readonly sessionFamily?: string;
+  readonly sessionMode?: string;
+  readonly round?: number;
+  readonly sessionRotation?: boolean;
+  readonly sessionFallback?: boolean;
   readonly tokens?: CodexRunTokens;
 }
 

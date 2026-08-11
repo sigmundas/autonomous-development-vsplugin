@@ -144,6 +144,11 @@ export interface DashboardCodexRun {
   readonly promptCharacters?: number;
   readonly outputCharacters?: number;
   readonly totalTokens?: number;
+  readonly sessionMode?: string;
+  readonly sessionFamily?: string;
+  readonly round?: number;
+  readonly sessionRotation?: boolean;
+  readonly sessionFallback?: boolean;
 }
 
 export interface DashboardCodexUsage {
@@ -204,6 +209,7 @@ export interface DashboardConfigSnapshot {
   readonly preset?: string;
   readonly workflowMode?: string;
   readonly maxReviewRounds?: number;
+  readonly reuseCodexReviewContext?: boolean;
   readonly claudeRuntime?: string;
   readonly claudeModel?: {
     readonly id: string;

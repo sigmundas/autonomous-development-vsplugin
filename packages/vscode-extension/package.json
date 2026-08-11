@@ -269,6 +269,12 @@
         "icon": "$(play)"
       },
       {
+        "command": "autonomousDev.continueFreshClaudeSession",
+        "title": "Continue in Fresh Claude Session",
+        "category": "Autonomous Development",
+        "icon": "$(debug-restart)"
+      },
+      {
         "command": "autonomousDev.focusClaudeTerminal",
         "title": "Focus Claude Terminal",
         "category": "Autonomous Development",

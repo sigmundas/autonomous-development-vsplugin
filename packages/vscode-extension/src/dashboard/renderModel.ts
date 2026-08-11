@@ -277,7 +277,10 @@ function codexUsageView(model: CodexUsageModel): DashboardCodexUsage {
       ...(r.sessionFamily !== undefined ? { sessionFamily: r.sessionFamily } : {}),
       ...(r.round !== undefined ? { round: r.round } : {}),
       ...(r.sessionRotation !== undefined ? { sessionRotation: r.sessionRotation } : {}),
-      ...(r.sessionFallback !== undefined ? { sessionFallback: r.sessionFallback } : {})
+      ...(r.sessionFallback !== undefined ? { sessionFallback: r.sessionFallback } : {}),
+      ...(r.sessionResumeCapability !== undefined
+        ? { sessionResumeCapability: r.sessionResumeCapability }
+        : {})
     })),
     totalDurationSeconds: model.totalDurationSeconds,
     totalTokens: model.totalTokens

@@ -223,6 +223,8 @@ describe('parseRunStateText cumulative ledgers + mode + checkpoints (run-state v
           started_at: '2026-06-14T09:59:00Z',
           events_artifact: 'review-02.events.ndjson',
           output_artifact: 'review-02.codex.json',
+          session_resume_capability: 'unsupported',
+          session_fallback: false,
           tokens: { input_tokens: 100, output_tokens: 200, total_tokens: 300 }
         }
       ],
@@ -286,6 +288,17 @@ describe('parseRunStateText cumulative ledgers + mode + checkpoints (run-state v
     assert.equal(run?.promptCharacters, 1200);
     assert.equal(run?.durationSeconds, 12.5);
     assert.equal(run?.tokens?.totalTokens, 300);
+    assert.equal(run?.sessionResumeCapability, 'unsupported');
+    assert.equal(run?.sessionFallback, false);
+  });
+
+  it('parses supported Codex session resume capability', () => {
+    const { state } = parseRunStateText(
+      richState({
+        codex_runs: [{ phase: 'review', session_resume_capability: 'supported' }]
+      })
+    );
+    assert.equal(state?.codexRuns[0]?.sessionResumeCapability, 'supported');
   });
 
   it('parses review delta flag and the latest checkpoint', () => {

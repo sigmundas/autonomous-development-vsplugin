@@ -569,7 +569,7 @@ function renderCodexUsage(view: DashboardView): HTMLElement | null {
       el('td', {}, [r.phase ?? '—']),
       el('td', {}, [
         r.sessionMode
-          ? `${r.sessionMode} ${r.sessionFamily ?? 'session'}${r.sessionRotation ? ' · rotated' : ''}${r.sessionFallback ? ' · fallback' : ''}`
+          ? `${r.sessionMode} ${r.sessionFamily ?? 'session'}${r.sessionResumeCapability === 'unsupported' ? ' · resume unsupported' : ''}${r.sessionRotation ? ' · rotated' : ''}${r.sessionFallback ? ' · fallback' : ''}`
           : ''
       ]),
       el('td', {}, [r.model ?? '']),

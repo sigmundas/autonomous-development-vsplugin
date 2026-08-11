@@ -282,6 +282,7 @@ export interface CodexRun {
   readonly round?: number;
   readonly sessionRotation?: boolean;
   readonly sessionFallback?: boolean;
+  readonly sessionResumeCapability?: 'supported' | 'unsupported';
   readonly tokens?: CodexRunTokens;
 }
 

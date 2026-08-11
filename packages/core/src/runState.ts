@@ -705,6 +705,7 @@ function normalizeCodexRuns(value: unknown): CodexRun[] {
       round?: number;
       sessionRotation?: boolean;
       sessionFallback?: boolean;
+      sessionResumeCapability?: 'supported' | 'unsupported';
       tokens?: CodexRunTokens;
     } = {};
     const phase = asNonEmptyString(entry['phase']);
@@ -737,6 +738,9 @@ function normalizeCodexRuns(value: unknown): CodexRun[] {
       run.sessionRotation = entry['session_rotation'];
     if (typeof entry['session_fallback'] === 'boolean')
       run.sessionFallback = entry['session_fallback'];
+    const sessionResumeCapability = entry['session_resume_capability'];
+    if (sessionResumeCapability === 'supported' || sessionResumeCapability === 'unsupported')
+      run.sessionResumeCapability = sessionResumeCapability;
     const tokens = normalizeCodexRunTokens(entry['tokens']);
     if (tokens) run.tokens = tokens;
     runs.push(run);

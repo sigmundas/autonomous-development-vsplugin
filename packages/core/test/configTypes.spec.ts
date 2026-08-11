@@ -212,6 +212,14 @@ describe('parseRunConfigSnapshot', () => {
           plan: { profile: 'azure-gpt5p6-sol', reasoning_effort: 'high', model: 'gpt-init' }
         },
         claude_runtime: 'azure-claude',
+        claude_runtime_snapshot: {
+          name: 'azure-claude',
+          display_name: 'Azure · Claude',
+          launcher: '/usr/local/bin/claude-azure',
+          args: ['--profile', 'initial'],
+          allowed_commands: ['ruff', 'npm run test'],
+          executable_paths: ['/opt/homebrew/bin', '~/.local/bin']
+        },
         claude_model: { id: 'sonnet', display_name: 'Sonnet', model: 'sonnet-exact' }
       }
     });
@@ -222,6 +230,12 @@ describe('parseRunConfigSnapshot', () => {
       assert.equal(snap.codex.plan?.profile, 'azure-gpt5p6-sol');
       assert.equal(snap.codex.plan?.reasoningEffort, 'high');
       assert.equal(snap.claudeRuntime, 'azure-claude');
+      assert.deepEqual(snap.claudeRuntimeSnapshot?.args, ['--profile', 'initial']);
+      assert.deepEqual(snap.claudeRuntimeSnapshot?.allowedCommands, ['ruff', 'npm run test']);
+      assert.deepEqual(snap.claudeRuntimeSnapshot?.executablePaths, [
+        '/opt/homebrew/bin',
+        '~/.local/bin'
+      ]);
       assert.equal(snap.claudeModel?.model, 'sonnet-exact');
     }
   });

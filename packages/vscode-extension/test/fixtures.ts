@@ -705,6 +705,9 @@ export function buildFixtures(): Fixtures {
           duration_seconds: 12.5,
           prompt_characters: 1000,
           output_characters: 2000,
+          session_mode: 'fresh',
+          session_family: 'review',
+          session_resume_capability: 'supported',
           tokens: { input_tokens: 500, output_tokens: 800, total_tokens: 1300 }
         },
         {
@@ -713,6 +716,10 @@ export function buildFixtures(): Fixtures {
           duration_seconds: 8.25,
           prompt_characters: 1500,
           output_characters: 900,
+          session_mode: 'fresh',
+          session_family: 'review',
+          session_resume_capability: 'unsupported',
+          session_fallback: false,
           tokens: { input_tokens: 700, output_tokens: 400, total_tokens: 1100 }
         }
       ]

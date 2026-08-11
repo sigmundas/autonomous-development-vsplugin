@@ -149,6 +149,7 @@ export interface DashboardCodexRun {
   readonly round?: number;
   readonly sessionRotation?: boolean;
   readonly sessionFallback?: boolean;
+  readonly sessionResumeCapability?: 'supported' | 'unsupported';
 }
 
 export interface DashboardCodexUsage {

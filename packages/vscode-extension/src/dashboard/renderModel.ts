@@ -713,10 +713,7 @@ function formatEffort(effort: string): string {
  * liveness alone is not workflow evidence: Claude remains alive while it
  * orchestrates specification and planning work.
  */
-const IMPLEMENTATION_ACTIVE_PHASES: ReadonlySet<string> = new Set([
-  'plan-accepted',
-  'implementing'
-]);
+const IMPLEMENTATION_ACTIVE_PHASES: ReadonlySet<string> = new Set(['implementing']);
 
 /**
  * Phases at which the controller has explicitly transitioned to verification.

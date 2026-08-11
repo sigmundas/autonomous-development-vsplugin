@@ -160,11 +160,7 @@ describe('resumeInClaude — runtime resolution', () => {
   it('never invents a runtime if the snapshot names a missing one AND a different global exists', () => {
     // Reasserts the invariant: snapshot precedence forbids silent substitution.
     const run = makeRun({ snapshot: { claude_runtime: 'gone', codex: {} } });
-    const { runtime, source } = resolveRuntimeForRun(
-      run,
-      [AZURE, ANTHROPIC],
-      'anthropic-claude'
-    );
+    const { runtime, source } = resolveRuntimeForRun(run, [AZURE, ANTHROPIC], 'anthropic-claude');
     assert.equal(runtime, undefined);
     assert.notEqual(source.kind, 'fallback');
     assert.equal(source.kind, 'unavailable');
@@ -217,10 +213,7 @@ describe('resumeInClaude — plan construction', () => {
     const run = makeRun({ snapshot: { claude_runtime: 'quirky', codex: {} } });
     const plan = planResumeInClaude(run, [trouble], undefined, controllerPath, '/work/repo');
     // Bare token whitespace must be quoted; adversarial shell chars must be quoted.
-    assert.deepEqual(plan.launcherArgv.slice(0, 2), [
-      '/opt/quirky bin/claude',
-      'a; rm -rf $HOME'
-    ]);
+    assert.deepEqual(plan.launcherArgv.slice(0, 2), ['/opt/quirky bin/claude', 'a; rm -rf $HOME']);
   });
 
   it('bootstraps the dedicated Resume skill with the exact run id', () => {
@@ -235,10 +228,7 @@ describe('resumeInClaude — plan construction', () => {
     );
     assert.match(plan.instruction, /Do not call controller\.py init/);
     assert.match(plan.instruction, /do not initialize or create a run/);
-    assert.equal(
-      plan.bootstrapPrompt,
-      `${AUTONOMOUS_RESUME_SKILL} 20260806T091439Z-cafefacefade`
-    );
+    assert.equal(plan.bootstrapPrompt, `${AUTONOMOUS_RESUME_SKILL} 20260806T091439Z-cafefacefade`);
     assert.equal(plan.launcherArgv.at(-1), plan.bootstrapPrompt);
     assert.equal(plan.launcherArgv.at(-3), '--append-system-prompt');
     assert.equal(plan.launcherArgv.at(-2), plan.instruction);

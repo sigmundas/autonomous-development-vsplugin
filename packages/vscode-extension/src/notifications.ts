@@ -76,9 +76,18 @@ export class RunNotifier implements vscode.Disposable {
         continue;
       }
 
-      if (next.status !== prev.status && next.status === 'complete') {
+      if (
+        next.status !== prev.status &&
+        (next.status === 'complete' || next.status === 'complete_with_followups')
+      ) {
         if (this.allow(level, true)) {
-          void vscode.window.showInformationMessage(`Run ${run.runId} completed successfully.`);
+          const suffix =
+            next.status === 'complete_with_followups'
+              ? ` with ${run.model?.completionEvaluation?.followUpCount ?? 0} follow-up(s)`
+              : '';
+          void vscode.window.showInformationMessage(
+            `Run ${run.runId} completed successfully${suffix}.`
+          );
         }
         continue;
       }

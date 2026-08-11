@@ -166,6 +166,7 @@ describe('discoverRuns (disk IO)', () => {
   it('maps statuses to the right group', () => {
     assert.equal(groupForStatus('active'), 'active');
     assert.equal(groupForStatus('complete'), 'completed');
+    assert.equal(groupForStatus('complete_with_followups'), 'completed');
     assert.equal(groupForStatus('blocked'), 'completed');
     assert.equal(groupForStatus('archived'), 'archived');
   });

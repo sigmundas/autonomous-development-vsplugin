@@ -91,7 +91,7 @@ Canonical shape (from `cmd_init`, mutated by other commands):
   "run_id": "20260612T201323Z-96954900",
   "label": "optional-slug",
   "feature": "<original feature text>",
-  "status": "active",                   // active|complete|blocked|cancelled|archived
+  "status": "active",                   // active|complete|complete_with_followups|blocked|cancelled|archived
   "phase": "initialized",               // see §4
   "created_at": "ISO-8601 seconds",
   "updated_at": "ISO-8601 seconds",     // refreshed on every save
@@ -123,7 +123,11 @@ Canonical shape (from `cmd_init`, mutated by other commands):
     "plan": "implementation-plan.codex.json",    // set after codex plan
     "accepted_plan": "accepted-plan.md",         // set after accept --kind plan
     "review": "review-01.codex.json",            // latest review path
-    "adversarial": "adversarial-01.codex.json"
+    "adversarial": "adversarial-01.codex.json",
+    "completion_disposition": "completion-disposition.codex.json",
+    "follow_ups_json": "follow-ups.json",
+    "follow_ups_markdown": "follow-ups.md",
+    "follow_up_context": "follow-up-context.json"
   },
   "verification": {
     "passed": false,
@@ -165,6 +169,13 @@ Canonical shape (from `cmd_init`, mutated by other commands):
   "review_ledger": [],                 // NEW: triage dispositions keyed by fingerprint (§3.1)
   "codex_runs": [],                    // NEW: per-phase usage instrumentation (§3.3)
   "risk": { "requires_adversarial_review": false, "reasons": [] },
+  "completion_evaluation": {
+    "result": "ready_with_followups", // ready|ready_with_followups|must_fix|human_decision_required
+    "findings": []
+  },
+  "follow_up_source": null,             // compact source metadata on a new follow-up run
+  "awaiting_human_decision": false,
+  "awaiting_human_decision_phase": null,
   "notes": ["free-form strings"],
   "completion_gate_failures": ["set by evaluate"],
   // migration-only fields:
@@ -241,31 +252,35 @@ deleted/unreadable), `previous_checkpoint_id` (or null), `review_context_mode`.
 
 ## 4. Phase strings & lifecycle (who sets what)
 
-| Controller action                | status        | phase                        |
-| -------------------------------- | ------------- | ---------------------------- |
-| `init`                           | active        | `initialized`                |
-| `codex --phase enhance`          | active        | `idea-enhanced`              |
-| `accept --kind spec`             | active        | `spec-accepted`              |
-| `codex --phase plan`             | active        | `plan-proposed`              |
-| `accept --kind plan`             | active        | `plan-accepted`              |
-| `set-phase --phase implementing` | active        | `implementing` (free-form)   |
-| `run-check` (all latest pass)    | active        | `verified`                   |
-| `run-check` (any latest fails)   | active        | `verification-failed`        |
-| `codex --phase review`           | active        | `reviewed`                   |
-| review budget exceeded           | **blocked**   | `review-budget-exhausted`    |
-| `codex --phase adversarial`      | active        | `adversarially-reviewed`     |
-| `evaluate` (gates fail)          | active        | `completion-gates-failed`    |
-| `evaluate` (gates pass)          | **complete**  | `complete`                   |
-| `cancel`                         | **cancelled** | `cancelled`                  |
-| `block`                          | **blocked**   | `blocked`                    |
-| `archive-run`                    | **archived**  | (unchanged)                  |
-| stop-gate budget exhausted       | **blocked**   | `stop-gate-budget-exhausted` |
+| Controller action                | status                      | phase                        |
+| -------------------------------- | --------------------------- | ---------------------------- |
+| `init`                           | active                      | `initialized`                |
+| `codex --phase enhance`          | active                      | `idea-enhanced`              |
+| `accept --kind spec`             | active                      | `spec-accepted`              |
+| `codex --phase plan`             | active                      | `plan-proposed`              |
+| `accept --kind plan`             | active                      | `plan-accepted`              |
+| `set-phase --phase implementing` | active                      | `implementing` (free-form)   |
+| `run-check` (all latest pass)    | active                      | `verified`                   |
+| `run-check` (any latest fails)   | active                      | `verification-failed`        |
+| `codex --phase review`           | active                      | `reviewed`                   |
+| review budget exhausted          | active                      | `completion-evaluation`      |
+| `codex --phase adversarial`      | active                      | `adversarially-reviewed`     |
+| `disposition`                    | active                      | `completion-evaluation`      |
+| `evaluate` (gates fail)          | active                      | `completion-gates-failed`    |
+| `evaluate` (gates pass)          | **complete**                | `complete`                   |
+| `evaluate` (deferred follow-ups) | **complete_with_followups** | `complete_with_followups`    |
+| `cancel`                         | **cancelled**               | `cancelled`                  |
+| `block`                          | **blocked**                 | `blocked`                    |
+| `archive-run`                    | **archived**                | (unchanged)                  |
+| stop-gate budget exhausted       | **blocked**                 | `stop-gate-budget-exhausted` |
 
 `phase` is free-form (set-phase accepts anything), so the extension must **derive**
 its stage model defensively from `status` + `phase` + artifacts + reviews +
 verification + risk, never assume an exact phase string.
 
-Terminal statuses: `{complete, blocked, cancelled, archived}` (`TERMINAL_STATUSES`).
+Terminal statuses: `{complete, complete_with_followups, blocked, cancelled,
+archived}` (`TERMINAL_STATUSES`). `complete_with_followups` is successful, not
+blocked or failed.
 
 ### 4.1 Terminal-state & mutation-integrity rules
 
@@ -281,7 +296,8 @@ not bypass them:
 - **Transition** (`resolve_run_for_transition`) — lifecycle commands that must read
   a terminal run (e.g. archive a completed run); the transition table
   (`TRANSITION_POLICY`) is enforced under the lock: `cancel`/`block` only from
-  `active`; `archive-run` only from `{complete, blocked, cancelled}`.
+  `active`; `archive-run` only from `{complete, complete_with_followups, blocked,
+cancelled}`.
 
 Run-identity invariants are re-asserted under the lock: `run_id` must equal the
 run directory name and `repository.id` must match the current repo
@@ -296,7 +312,18 @@ first-seen. `verification.passed = checks_nonempty AND all(effective.exit_code =
 The UI must show the latest effective result per logical name while still letting
 earlier attempts be inspected.
 
-## 6. Completion-gate logic (replicate exactly — `cmd_evaluate`)
+## 6. Completion-gate and disposition logic
+
+The controller's persisted `completion_evaluation.result` is authoritative. The
+extension parses and displays it; it does not independently decide whether a
+finding may be deferred. Older runs without this field continue to use the
+legacy gate derivation below.
+
+Before evaluation, `disposition` classifies every remaining concern as exactly
+one of `MUST_FIX_NOW`, `FIX_LATER`, `ACCEPTED_WITH_EVIDENCE`, or
+`HUMAN_DECISION_REQUIRED`. Required acceptance criteria and hard verification
+and safety gates remain fail-closed. `FIX_LATER` items are persisted in
+`follow-ups.json` and `follow-ups.md` with their source provenance.
 
 Gate FAILS (status stays `active`, phase `completion-gates-failed`,
 `completion_gate_failures` = the reason list) if **any** check fails. Computed
@@ -334,7 +361,10 @@ Finally:
 10. If `risk.requires_adversarial_review`: no adversarial review recorded, OR
     latest adversarial `verdict != "pass"`.
 
-All pass ⇒ status `complete`, phase `complete`, `completion_gate_failures = []`.
+All hard gates pass and no blocking disposition remains ⇒ status `complete`, or
+`complete_with_followups` when one or more `FIX_LATER` items remain. Both are
+successful terminal states. `MUST_FIX_NOW` keeps the run active;
+`HUMAN_DECISION_REQUIRED` records the narrow question and source phase.
 
 > The gate does **not** consult `review_ledger` directly; triage dispositions are
 > already folded into `cumulative_findings` by the `triage` command (§6.1) before
@@ -389,7 +419,7 @@ place; tree/dashboard/status bar/commands all consume it. The controller returns
 the first matching phase (verification uses the latest-effective check per name,
 §5):
 
-1. Terminal status (`complete`/`blocked`/`cancelled`/`archived`) ⇒ phase = status,
+1. Terminal status (`complete`/`complete_with_followups`/`blocked`/`cancelled`/`archived`) ⇒ phase = status,
    "no further action".
 2. No accepted spec:
    - if `mode == "rigorous"` **and** `enhance` not in artifacts ⇒ phase
@@ -418,7 +448,8 @@ gate (§6) and `compute_next_action` (§7 step 5) DO consider severe cumulative
 findings. The extension's next-action follows `compute_next_action`. For
 terminal/early states with no stop_gate equivalent the extension extends the
 front of the list defensively (status blocked ⇒ "review the blocking reason";
-status complete/cancelled/archived ⇒ none) without contradicting the controller.
+status complete/complete_with_followups/cancelled/archived ⇒ none) without
+contradicting the controller.
 
 ## 8. Codex artifact JSON schemas
 
@@ -488,27 +519,30 @@ Global: `--project-root <dir>`, `--state-dir <dir>`, `--run-id <id>`. The full
 v0.3.0 subcommand surface (always invoked as an **argv array**, never a shell
 string):
 
-| Subcommand             | Args                                                                                                                         | Mutating |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `doctor`               | —                                                                                                                            | no       |
+| Subcommand             | Args                                                                                                                                                                                | Mutating |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `doctor`               | —                                                                                                                                                                                   | no       |
 | `init`                 | `--feature` (req) `[--label]` `[--mode auto\|lean\|standard\|rigorous]` `[--worktree-mode isolated\|current]` `[--allow-main]` `[--max-review-rounds 1..5]` `[--reuse]` `[--force]` | writes   |
-| `codex`                | `--phase enhance\|plan\|review\|adversarial` (req) `[--timeout N]`                                                           | writes   |
-| `accept`               | `--kind spec\|plan` (req) `[--file F]` `[--source J]` `[--decisions J]`                                                      | writes   |
-| `run-check`            | `--name` (req) `[--output summary\|full]` `[--failure-tail-lines N]` `[--timeout N]` `<command…>`                            | writes   |
-| `set-phase`            | `--phase` (req) `[--note]`                                                                                                   | writes   |
-| `set-risk`             | `--require-adversarial / --no-require-adversarial` `[--reason]`                                                              | writes   |
-| `evaluate`             | —                                                                                                                            | writes   |
-| `usage-report`         | `[--json]`                                                                                                                   | no       |
-| `next-action`          | `[--json]`                                                                                                                   | no       |
-| `triage`               | `--file` (req, JSON ledger array)                                                                                            | writes   |
-| `status`               | `[--json]`                                                                                                                   | no       |
-| `cancel`               | `[--reason]`                                                                                                                 | writes   |
-| `block`                | `--reason` (req)                                                                                                             | writes   |
-| `list-runs`            | `[--json]` `[--all]`                                                                                                         | no       |
-| `show-run`             | `--run-id <id>` `[--json]`                                                                                                   | no       |
-| `migrate-legacy-state` | `[--target-run-id <id>]` `[--force]` (force never overwrites)                                                                | writes   |
-| `archive-run`          | —                                                                                                                            | writes   |
-| `accept-drift`         | —                                                                                                                            | writes   |
+| `codex`                | `--phase enhance\|plan\|review\|adversarial` (req) `[--timeout N]`                                                                                                                  | writes   |
+| `accept`               | `--kind spec\|plan` (req) `[--file F]` `[--source J]` `[--decisions J]`                                                                                                             | writes   |
+| `run-check`            | `--name` (req) `[--output summary\|full]` `[--failure-tail-lines N]` `[--timeout N]` `<command…>`                                                                                   | writes   |
+| `set-phase`            | `--phase` (req) `[--note]`                                                                                                                                                          | writes   |
+| `set-risk`             | `--require-adversarial / --no-require-adversarial` `[--reason]`                                                                                                                     | writes   |
+| `evaluate`             | —                                                                                                                                                                                   | writes   |
+| `disposition`          | `--file` (req, completion-disposition JSON)                                                                                                                                         | writes   |
+| `continuation-context` | `[--json]`                                                                                                                                                                          | no       |
+| `start-followup-run`   | `--follow-up-id` (repeatable, req) `[--label]`                                                                                                                                      | writes   |
+| `usage-report`         | `[--json]`                                                                                                                                                                          | no       |
+| `next-action`          | `[--json]`                                                                                                                                                                          | no       |
+| `triage`               | `--file` (req, JSON ledger array)                                                                                                                                                   | writes   |
+| `status`               | `[--json]`                                                                                                                                                                          | no       |
+| `cancel`               | `[--reason]`                                                                                                                                                                        | writes   |
+| `block`                | `--reason` (req)                                                                                                                                                                    | writes   |
+| `list-runs`            | `[--json]` `[--all]`                                                                                                                                                                | no       |
+| `show-run`             | `--run-id <id>` `[--json]`                                                                                                                                                          | no       |
+| `migrate-legacy-state` | `[--target-run-id <id>]` `[--force]` (force never overwrites)                                                                                                                       | writes   |
+| `archive-run`          | —                                                                                                                                                                                   | writes   |
+| `accept-drift`         | —                                                                                                                                                                                   | writes   |
 
 Adapter rules: always pass explicit `--project-root` and (for run-scoped commands)
 `--run-id`; never rely on the "single active run" fallback. Mutating commands are

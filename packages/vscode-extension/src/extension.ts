@@ -32,10 +32,6 @@ export interface AutonomousDevApi {
   readonly refreshConfig: () => Promise<void>;
 }
 
-function resolveProjectRoot(): string | undefined {
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-}
-
 export function activate(context: vscode.ExtensionContext): AutonomousDevApi {
   let config: ExtensionConfig = readConfig();
   const getConfig = (): ExtensionConfig => config;
@@ -51,7 +47,7 @@ export function activate(context: vscode.ExtensionContext): AutonomousDevApi {
 
   const service = new ControllerService(getConfig, () => store.activeStateHome, log);
   const configClient = new ConfigClient(service);
-  const configStore = new ConfigStore(configClient, resolveProjectRoot, log);
+  const configStore = new ConfigStore(configClient, log);
   context.subscriptions.push(configStore);
   const terminalRegistry = new ClaudeTerminalRegistry();
   context.subscriptions.push(terminalRegistry);
@@ -83,8 +79,7 @@ export function activate(context: vscode.ExtensionContext): AutonomousDevApi {
     context,
     store: configStore,
     client: configClient,
-    log,
-    getProjectRoot: resolveProjectRoot
+    log
   };
 
   const statusBar = new RunStatusBar(store);
@@ -187,9 +182,7 @@ export function activate(context: vscode.ExtensionContext): AutonomousDevApi {
   // Kick off a config load in the background so the tree renders as soon as
   // the controller responds. Errors surface via the store's cached error field.
   void configStore.refresh().catch((err) => {
-    log.warn(
-      `initial config refresh failed: ${err instanceof Error ? err.message : String(err)}`
-    );
+    log.warn(`initial config refresh failed: ${err instanceof Error ? err.message : String(err)}`);
   });
 
   return {

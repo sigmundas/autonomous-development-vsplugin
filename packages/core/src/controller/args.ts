@@ -17,6 +17,7 @@ export type ControllerSubcommand =
   | 'accept-drift'
   | 'authorize-review'
   | 'continue-run'
+  | 'start-followup-run'
   | 'cancel'
   | 'archive-run'
   | 'config-show'
@@ -24,9 +25,11 @@ export type ControllerSubcommand =
   | 'config-list-profiles'
   | 'config-list-presets'
   | 'config-list-claude-runtimes'
+  | 'config-list-claude-models'
   | 'config-set-active-preset'
   | 'config-set-phase'
-  | 'config-set-claude-runtime';
+  | 'config-set-claude-runtime'
+  | 'config-set-claude-model';
 
 /** Workflow rigor modes accepted by `controller.py init --mode`. */
 export type ControllerInitMode = 'auto' | 'lean' | 'standard' | 'rigorous';
@@ -47,11 +50,13 @@ const MUTATING: ReadonlySet<ControllerSubcommand> = new Set([
   'accept-drift',
   'authorize-review',
   'continue-run',
+  'start-followup-run',
   'cancel',
   'archive-run',
   'config-set-active-preset',
   'config-set-phase',
-  'config-set-claude-runtime'
+  'config-set-claude-runtime',
+  'config-set-claude-model'
 ]);
 
 /** Commands that must be scoped to an explicit --run-id. */
@@ -62,14 +67,14 @@ const RUN_SCOPED: ReadonlySet<ControllerSubcommand> = new Set([
   'accept-drift',
   'authorize-review',
   'continue-run',
+  'start-followup-run',
   'cancel',
   'archive-run'
 ]);
 
 /**
- * Config subcommands read/write the on-disk config file and do not touch
- * run-state.json. They still accept --project-root so the controller can resolve
- * relative paths, but the argument is not run-scoped.
+ * Config subcommands read/write global files and do not require repository
+ * identity or a project root.
  */
 const CONFIG_SUBCOMMANDS: ReadonlySet<ControllerSubcommand> = new Set([
   'config-show',
@@ -77,9 +82,11 @@ const CONFIG_SUBCOMMANDS: ReadonlySet<ControllerSubcommand> = new Set([
   'config-list-profiles',
   'config-list-presets',
   'config-list-claude-runtimes',
+  'config-list-claude-models',
   'config-set-active-preset',
   'config-set-phase',
-  'config-set-claude-runtime'
+  'config-set-claude-runtime',
+  'config-set-claude-model'
 ]);
 
 export function isMutatingSubcommand(sub: ControllerSubcommand): boolean {
@@ -95,8 +102,8 @@ export interface ControllerContext {
   readonly pythonPath: string;
   /** Absolute path to scripts/controller.py. */
   readonly controllerPath: string;
-  /** Absolute project root (always passed as --project-root). */
-  readonly projectRoot: string;
+  /** Absolute repository root. Required for non-config subcommands. */
+  readonly projectRoot?: string;
   /** Optional explicit state home (--state-dir). */
   readonly stateHome?: string;
 }
@@ -110,6 +117,8 @@ export interface ControllerOptions {
   readonly reason?: string;
   /** continue-run: recovery action carried into the linked child. */
   readonly recoveryIntent?: ControllerRecoveryIntent;
+  /** start-followup-run: selected durable FU-NNN ids. */
+  readonly followUpIds?: readonly string[];
   /** Append --json (list-runs/show-run/status). Config-* commands always emit JSON. */
   readonly json?: boolean;
   /** init: required feature description (--feature). */
@@ -161,6 +170,9 @@ export function buildControllerCommand(
   sub: ControllerSubcommand,
   options: ControllerOptions = {}
 ): ControllerCommandLine {
+  if (!CONFIG_SUBCOMMANDS.has(sub) && (!ctx.projectRoot || ctx.projectRoot.length === 0)) {
+    throw new Error(`Controller subcommand "${sub}" requires an explicit projectRoot`);
+  }
   if (RUN_SCOPED.has(sub) && (!options.runId || options.runId.length === 0)) {
     throw new Error(`Controller subcommand "${sub}" requires an explicit runId`);
   }
@@ -182,7 +194,10 @@ export function buildControllerCommand(
     }
   }
 
-  const args: string[] = [ctx.controllerPath, '--project-root', ctx.projectRoot];
+  const args: string[] = [ctx.controllerPath];
+  if (!CONFIG_SUBCOMMANDS.has(sub) && ctx.projectRoot) {
+    args.push('--project-root', ctx.projectRoot);
+  }
   if (ctx.stateHome && ctx.stateHome.length > 0) {
     args.push('--state-dir', ctx.stateHome);
   }
@@ -220,16 +235,27 @@ export function buildControllerCommand(
     case 'continue-run':
       if (options.recoveryIntent) args.push('--intent', options.recoveryIntent);
       break;
+    case 'start-followup-run':
+      if (!options.followUpIds || options.followUpIds.length === 0) {
+        throw new Error('Controller subcommand "start-followup-run" requires followUpIds');
+      }
+      for (const id of options.followUpIds) args.push('--follow-up-id', id);
+      if (options.label && options.label.length > 0) args.push('--label', options.label);
+      break;
     case 'config-show':
     case 'config-validate':
     case 'config-list-profiles':
     case 'config-list-presets':
     case 'config-list-claude-runtimes':
+    case 'config-list-claude-models':
       args.push('--json');
       break;
     case 'config-set-active-preset':
     case 'config-set-claude-runtime':
       args.push(options.name as string);
+      break;
+    case 'config-set-claude-model':
+      if (options.name) args.push(options.name);
       break;
     case 'config-set-phase':
       args.push('--preset', options.configPreset as string);

@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 import * as vscode from 'vscode';
@@ -22,6 +23,65 @@ function getNonce(): string {
     text += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return text;
+}
+
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Resolve repository source exclusively against the run's recorded worktree. */
+export function resolveFindingSource(run: DiscoveredRun, file: string): string | undefined {
+  const worktree = run.state?.repository.worktreePath ?? run.state?.repository.canonicalRoot;
+  if (!worktree || file.length === 0) return undefined;
+  return confineToDirectory(worktree, file).path;
+}
+
+/** Resolve controller-owned artifacts exclusively against the durable run directory. */
+export function resolveRunArtifact(run: DiscoveredRun, file: string): string | undefined {
+  if (file.length === 0) return undefined;
+  return confineToDirectory(run.runDir, file).path;
+}
+
+export interface VerificationLogOpenDeps {
+  readonly openTextDocument: (uri: vscode.Uri) => Thenable<vscode.TextDocument>;
+  readonly showTextDocument: (document: vscode.TextDocument) => Thenable<unknown>;
+  readonly showWarning: (message: string) => void;
+  readonly warn: (message: string) => void;
+}
+
+/** Open one recorded verification log without consulting the repository worktree. */
+export async function openVerificationCheckLog(
+  run: DiscoveredRun,
+  log: string,
+  deps: VerificationLogOpenDeps
+): Promise<boolean> {
+  const path = resolveRunArtifact(run, log);
+  if (!path) {
+    const message = `Refused verification log path outside the run directory: ${log}`;
+    deps.warn(message);
+    deps.showWarning(`Could not open log ${log}: path is outside the run directory.`);
+    return false;
+  }
+  if (!isFile(path)) {
+    const message = `Verification log is not present at its recorded run path: ${log}`;
+    deps.warn(message);
+    deps.showWarning(`Could not open log ${log}: file is not present for this run.`);
+    return false;
+  }
+  try {
+    const doc = await deps.openTextDocument(vscode.Uri.file(path));
+    await deps.showTextDocument(doc);
+    return true;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    deps.warn(`openLog failed for ${log}: ${message}`);
+    deps.showWarning(`Could not open log ${log}: ${message}`);
+    return false;
+  }
 }
 
 /**
@@ -61,11 +121,7 @@ export class DashboardPanel {
     this.terminalRegistry.onDidChange(
       (identity) => {
         const run = this.currentRun();
-        if (
-          run &&
-          run.repoId === identity.repositoryId &&
-          run.runId === identity.runId
-        ) {
+        if (run && run.repoId === identity.repositoryId && run.runId === identity.runId) {
           this.render();
         }
       },
@@ -128,8 +184,7 @@ export class DashboardPanel {
     const key = this.currentRunKey;
     const eventLog = loadEventLog(run.runDir, { maxEntries: this.getConfig().maxEventLogEntries });
     const continuation = this.store.allRuns.find(
-      (candidate) =>
-        candidate.repoId === run.repoId && candidate.state?.parentRunId === run.runId
+      (candidate) => candidate.repoId === run.repoId && candidate.state?.parentRunId === run.runId
     );
     const view = reconcileTimeline(
       key ? this.lastViewByKey.get(key) : undefined,
@@ -174,29 +229,14 @@ export class DashboardPanel {
     }
   }
 
-  private resolveUnderRun(run: DiscoveredRun, file: string): vscode.Uri | undefined {
-    if (file.length === 0) {
-      return undefined;
-    }
-    const worktree = run.state?.repository.worktreePath;
-    const bases = [worktree, run.runDir].filter((b): b is string => Boolean(b));
-    for (const base of bases) {
-      const resolved = confineToDirectory(base, file);
-      if (resolved.path) {
-        return vscode.Uri.file(resolved.path);
-      }
-    }
-    this.log.warn(`Refused to open path outside the run/worktree: ${file}`);
-    return undefined;
-  }
-
   private async openFinding(run: DiscoveredRun, file: string, line?: number): Promise<void> {
-    const uri = this.resolveUnderRun(run, file);
-    if (!uri) {
+    const path = resolveFindingSource(run, file);
+    if (!path) {
+      this.log.warn(`Refused finding path outside the worktree: ${file}`);
       return;
     }
     try {
-      await openFileAtLine(uri, line);
+      await openFileAtLine(vscode.Uri.file(path), line);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.log.warn(`openFinding failed for ${file}: ${message}`);
@@ -222,18 +262,12 @@ export class DashboardPanel {
   }
 
   private async openLog(run: DiscoveredRun, log: string): Promise<void> {
-    const uri = this.resolveUnderRun(run, log);
-    if (!uri) {
-      return;
-    }
-    try {
-      const doc = await vscode.workspace.openTextDocument(uri);
-      await vscode.window.showTextDocument(doc);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.log.warn(`openLog failed for ${log}: ${message}`);
-      void vscode.window.showWarningMessage(`Could not open log ${log}: ${message}`);
-    }
+    await openVerificationCheckLog(run, log, {
+      openTextDocument: (uri) => vscode.workspace.openTextDocument(uri),
+      showTextDocument: (document) => vscode.window.showTextDocument(document),
+      showWarning: (message) => void vscode.window.showWarningMessage(message),
+      warn: (message) => this.log.warn(message)
+    });
   }
 
   private html(): string {

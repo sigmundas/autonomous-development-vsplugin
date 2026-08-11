@@ -1,10 +1,12 @@
 import {
   parseClaudeRuntimeList,
+  parseClaudeModelList,
   parseConfigValidation,
   parseEffectiveConfiguration,
   parsePresetList,
   parseProfileList,
   type ClaudeRuntimeList,
+  type ClaudeModelList,
   type CodexProfileList,
   type ConfigValidationResult,
   type ControllerConfigResponse,
@@ -23,9 +25,8 @@ import { ControllerError, type ControllerService } from './controllerService';
  * family of validators, and throws {@link ControllerError} on any transport,
  * parsing, or contract failure.
  *
- * Callers must supply an explicit `projectRoot`. The extension resolves it to
- * the active workspace folder at the call site so a workspace with multiple
- * folders never targets an ambiguous repository.
+ * Configuration commands are global and deliberately carry no repository
+ * identity. Run-scoped calls continue to use ControllerService.execute().
  */
 export class ConfigClient {
   constructor(private readonly service: ControllerService) {}
@@ -43,10 +44,9 @@ export class ConfigClient {
 
   private async runJson(
     sub: import('@semanticmatter/core').ControllerSubcommand,
-    projectRoot: string,
     options: import('@semanticmatter/core').ControllerOptions = {}
   ): Promise<unknown> {
-    const { stdout } = await this.service.execute(sub, projectRoot, options);
+    const { stdout } = await this.service.executeGlobal(sub, options);
     const trimmed = stdout.trim();
     if (trimmed.length === 0) {
       throw new ControllerError(`Controller "${sub}" produced no output.`);
@@ -60,14 +60,14 @@ export class ConfigClient {
     }
   }
 
-  async show(projectRoot: string): Promise<EffectiveConfiguration> {
-    const raw = await this.runJson('config-show', projectRoot);
+  async show(): Promise<EffectiveConfiguration> {
+    const raw = await this.runJson('config-show');
     return this.unwrap('config-show', parseEffectiveConfiguration(raw));
   }
 
-  async validate(projectRoot: string): Promise<ConfigValidationResult> {
+  async validate(): Promise<ConfigValidationResult> {
     try {
-      const raw = await this.runJson('config-validate', projectRoot);
+      const raw = await this.runJson('config-validate');
       return this.unwrap('config-validate', parseConfigValidation(raw));
     } catch (err) {
       // config-validate exits non-zero when the config is invalid but STILL
@@ -95,48 +95,56 @@ export class ConfigClient {
     }
   }
 
-  async listProfiles(projectRoot: string): Promise<CodexProfileList> {
-    const raw = await this.runJson('config-list-profiles', projectRoot);
+  async listProfiles(): Promise<CodexProfileList> {
+    const raw = await this.runJson('config-list-profiles');
     return this.unwrap('config-list-profiles', parseProfileList(raw));
   }
 
-  async listPresets(projectRoot: string): Promise<PresetList> {
-    const raw = await this.runJson('config-list-presets', projectRoot);
+  async listPresets(): Promise<PresetList> {
+    const raw = await this.runJson('config-list-presets');
     return this.unwrap('config-list-presets', parsePresetList(raw));
   }
 
-  async listClaudeRuntimes(projectRoot: string): Promise<ClaudeRuntimeList> {
-    const raw = await this.runJson('config-list-claude-runtimes', projectRoot);
+  async listClaudeRuntimes(): Promise<ClaudeRuntimeList> {
+    const raw = await this.runJson('config-list-claude-runtimes');
     return this.unwrap('config-list-claude-runtimes', parseClaudeRuntimeList(raw));
   }
 
-  async setActivePreset(projectRoot: string, name: string): Promise<void> {
+  async listClaudeModels(): Promise<ClaudeModelList> {
+    const raw = await this.runJson('config-list-claude-models');
+    return this.unwrap('config-list-claude-models', parseClaudeModelList(raw));
+  }
+
+  async setActivePreset(name: string): Promise<void> {
     if (name.length === 0) {
       throw new ControllerError('setActivePreset requires a non-empty preset name.');
     }
-    await this.service.execute('config-set-active-preset', projectRoot, { name });
+    await this.service.executeGlobal('config-set-active-preset', { name });
   }
 
-  async setClaudeRuntime(projectRoot: string, name: string): Promise<void> {
+  async setClaudeRuntime(name: string): Promise<void> {
     if (name.length === 0) {
       throw new ControllerError('setClaudeRuntime requires a non-empty runtime name.');
     }
-    await this.service.execute('config-set-claude-runtime', projectRoot, { name });
+    await this.service.executeGlobal('config-set-claude-runtime', { name });
   }
 
-  async setPhase(
-    projectRoot: string,
-    args: {
-      preset: string;
-      phase: ControllerPhase;
-      profile?: string;
-      model?: string;
-      reasoningEffort?: ControllerReasoningEffort;
-      reasoningSummary?: string;
-      verbosity?: string;
-    }
-  ): Promise<void> {
-    await this.service.execute('config-set-phase', projectRoot, {
+  async setClaudeModel(name?: string): Promise<void> {
+    await this.service.executeGlobal('config-set-claude-model', {
+      ...(name !== undefined ? { name } : {})
+    });
+  }
+
+  async setPhase(args: {
+    preset: string;
+    phase: ControllerPhase;
+    profile?: string;
+    model?: string;
+    reasoningEffort?: ControllerReasoningEffort;
+    reasoningSummary?: string;
+    verbosity?: string;
+  }): Promise<void> {
+    await this.service.executeGlobal('config-set-phase', {
       configPreset: args.preset,
       phase: args.phase,
       ...(args.profile !== undefined ? { profile: args.profile } : {}),

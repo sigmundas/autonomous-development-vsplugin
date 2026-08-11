@@ -16,6 +16,7 @@ import {
   discoverTriageFiles,
   findingDispositionsFromEvents,
   parseReviewText,
+  parseFollowUpsText,
   parseRunConfigSnapshot,
   resolveArtifactPath,
   summarizeCodexArtifact,
@@ -28,6 +29,7 @@ import {
   type DiscoveredRun,
   type FindingDisposition,
   type LoadedEventLog,
+  type FollowUpItem,
   type ReviewRef,
   type RunConfigSnapshot,
   type WorkflowStage
@@ -128,6 +130,16 @@ function artifact(
     filename,
     ...(sections.length > 0 ? { sections } : {})
   };
+}
+
+function readFollowUps(runDir: string, ref: string | undefined): readonly FollowUpItem[] {
+  const resolved = existsArtifact(runDir, ref, CONVENTIONAL_ARTIFACT_NAMES.followUpsJson);
+  if (!resolved.exists) return [];
+  try {
+    return parseFollowUpsText(readFileSync(resolved.path, 'utf8')).followUps;
+  } catch {
+    return [];
+  }
 }
 
 function reviewRound(
@@ -314,6 +326,8 @@ export function toDashboardView(
           ? { continuedByRunId: options.continuedByRunId }
           : {})
       },
+      completion: { followUpCount: 0 },
+      followUps: [],
       verification: {
         hasChecks: false,
         passed: false,
@@ -390,6 +404,18 @@ export function toDashboardView(
       CONVENTIONAL_ARTIFACT_NAMES.acceptedPlan
     )
   ];
+  const followUps = readFollowUps(runDir, state.artifacts.followUpsJson);
+  if (followUps.length > 0 || state.artifacts.followUpsMarkdown || state.artifacts.followUpsJson) {
+    artifacts.push(
+      artifact(
+        'autonomousDev.openFollowUps',
+        'Deferred follow-ups',
+        runDir,
+        state.artifacts.followUpsMarkdown,
+        CONVENTIONAL_ARTIFACT_NAMES.followUpsMarkdown
+      )
+    );
+  }
 
   const checks = model.verification.latest.map((c) => ({
     name: c.name,
@@ -451,18 +477,42 @@ export function toDashboardView(
     }),
     reviewBudget: model.reviewBudget,
     recovery: {
-      reviewBudgetExhausted: state.phase === 'review-budget-exhausted',
+      reviewBudgetExhausted: state.reviewBudgetExhausted === true,
       awaitingHumanDecision: state.awaitingHumanDecision === true,
       workPreserved:
         state.status === 'blocked' ||
-        state.phase === 'review-budget-exhausted' ||
+        state.reviewBudgetExhausted ||
         state.parentRunId !== undefined,
       verificationPreserved: model.verification.hasChecks,
       ...(state.parentRunId !== undefined ? { parentRunId: state.parentRunId } : {}),
       ...(options.continuedByRunId !== undefined
         ? { continuedByRunId: options.continuedByRunId }
+        : {}),
+      ...(state.awaitingHumanDecisionReason !== undefined
+        ? { humanDecisionReason: state.awaitingHumanDecisionReason }
+        : {}),
+      ...(state.awaitingHumanDecisionPhase !== undefined
+        ? { humanDecisionPhase: state.awaitingHumanDecisionPhase }
         : {})
     },
+    completion: {
+      ...(model.completionEvaluation?.result !== undefined
+        ? { result: model.completionEvaluation.result }
+        : {}),
+      ...(model.completionEvaluation?.summary !== undefined
+        ? { summary: model.completionEvaluation.summary }
+        : {}),
+      followUpCount: followUps.length || model.completionEvaluation?.followUpCount || 0
+    },
+    followUps: followUps.map((item) => ({
+      id: item.id,
+      title: item.title,
+      ...(item.severity !== undefined ? { severity: item.severity } : {}),
+      ...(item.category !== undefined ? { category: item.category } : {}),
+      ...(item.description !== undefined ? { description: item.description } : {}),
+      ...(item.whyDeferred !== undefined ? { whyDeferred: item.whyDeferred } : {}),
+      ...(item.provenance !== undefined ? { provenance: item.provenance } : {})
+    })),
     verification: {
       hasChecks: model.verification.hasChecks,
       passed: model.verification.passed,
@@ -485,7 +535,13 @@ export function toDashboardView(
       required: model.adversarial.required,
       satisfied: model.adversarial.satisfied,
       reasons: model.adversarial.reasons,
-      rounds: state.adversarialReviews.map((r) => reviewRound(runDir, r, dispositions))
+      rounds: state.adversarialReviews.map((r) => reviewRound(runDir, r, dispositions)),
+      ...(model.adversarial.latestRound !== undefined
+        ? { latestRound: model.adversarial.latestRound }
+        : {}),
+      ...(model.adversarial.latestVerdict !== undefined
+        ? { latestVerdict: model.adversarial.latestVerdict }
+        : {})
     },
     risk: model.riskClassification,
     ...(model.effectiveMode !== undefined ? { effectiveMode: model.effectiveMode } : {}),
@@ -554,6 +610,7 @@ function toDashboardConfigSnapshot(snap: RunConfigSnapshot): DashboardConfigSnap
       ? { maxReviewRounds: snap.workflow.maxReviewRounds }
       : {}),
     ...(snap.claudeRuntime !== undefined ? { claudeRuntime: snap.claudeRuntime } : {}),
+    ...(snap.claudeModel !== undefined ? { claudeModel: snap.claudeModel } : {}),
     phases
   };
 }
@@ -578,7 +635,8 @@ export function stageMetaFor(
   if (stageId === 'implementing') {
     if (!snap) return {};
     if (!snap.claudeRuntime) return {};
-    return { line: snap.claudeRuntime };
+    const model = snap.claudeModel?.displayName ?? snap.claudeModel?.id;
+    return { line: [snap.claudeRuntime, model].filter(Boolean).join(' · ') };
   }
   const phaseKey = codexPhaseForStage(stageId);
   if (!phaseKey) return {};
@@ -643,18 +701,11 @@ function formatEffort(effort: string): string {
 }
 
 /**
- * Controller phases at which the implementation action is NOT yet considered
- * complete. Includes every phase up to and including `implementing` — while
- * the controller is still recording any of these, an extension-managed Claude
- * terminal for the run means Claude is doing implementation work.
+ * Controller phases at which implementation is actively underway. Terminal
+ * liveness alone is not workflow evidence: Claude remains alive while it
+ * orchestrates specification and planning work.
  */
-const PRE_IMPLEMENTATION_COMPLETE_PHASES: ReadonlySet<string> = new Set([
-  'initialized',
-  'enhance',
-  'enhancing',
-  'idea-enhanced',
-  'spec-accepted',
-  'plan-proposed',
+const IMPLEMENTATION_ACTIVE_PHASES: ReadonlySet<string> = new Set([
   'plan-accepted',
   'implementing'
 ]);
@@ -684,16 +735,13 @@ export interface ImplementerRefinementFacts {
  * run):
  *
  * 1. While an extension-managed Claude terminal is alive AND the controller
- *    has NOT recorded completion of the implementation action, Implementing
- *    remains active. "Recorded completion" means the controller has advanced
- *    the phase past `implementing` (or the earlier planning/enhance phases).
+ *    records an implementation phase, Implementing remains active. Earlier
+ *    specification and planning phases remain authoritative.
  *
- * 2. Verification may become active only when ALL THREE conditions hold:
- *    (a) the implementation action has completed (controller phase is no
- *        longer one of the pre-implementation-complete phases),
- *    (b) the controller state has transitioned to verification (phase is
+ * 2. Verification may become active only when BOTH conditions hold:
+ *    (a) the controller state has transitioned to verification (phase is
  *        `verification` or `verification-failed`), and
- *    (c) at least one verification action has started or been recorded
+ *    (b) at least one verification action has started or been recorded
  *        (hasChecks is true).
  *    Otherwise Verification remains pending — never promoted to active by an
  *    earlier heuristic. Verification=failed continues to be shown when checks
@@ -705,24 +753,28 @@ export function refineStagesForImplementerRunning(
 ): WorkflowStage[] {
   // Terminal statuses: no refinement — the canonical stages already encode the
   // right story (complete / blocked / cancelled / archived).
-  if (facts.status === 'complete' || facts.status === 'cancelled' || facts.status === 'archived') {
+  if (
+    facts.status === 'complete' ||
+    facts.status === 'complete_with_followups' ||
+    facts.status === 'cancelled' ||
+    facts.status === 'archived'
+  ) {
     return [...stages];
   }
 
-  const implementationCompleted = !PRE_IMPLEMENTATION_COMPLETE_PHASES.has(facts.controllerPhase);
-  const verificationCanBeActive =
-    implementationCompleted && VERIFICATION_PHASES.has(facts.controllerPhase) && facts.hasChecks;
+  const implementationIsActive = IMPLEMENTATION_ACTIVE_PHASES.has(facts.controllerPhase);
+  const verificationCanBeActive = VERIFICATION_PHASES.has(facts.controllerPhase) && facts.hasChecks;
 
   return stages.map((stage): WorkflowStage => {
     if (stage.id === 'implementing') {
       // Rule 1: hold Implementing at active while Claude is still working.
-      if (facts.claudeTerminalOpen && !implementationCompleted) {
+      if (facts.claudeTerminalOpen && implementationIsActive) {
         return { ...stage, status: 'active' };
       }
       return stage;
     }
     if (stage.id === 'verification') {
-      // Rule 2: Verification may be active only when all three conditions hold.
+      // Rule 2: Verification may be active only when both conditions hold.
       if (stage.status === 'active' && !verificationCanBeActive) {
         return { ...stage, status: 'pending' };
       }

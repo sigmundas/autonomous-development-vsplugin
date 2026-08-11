@@ -22,6 +22,7 @@ type WebviewInbound =
   | { readonly type: 'refresh' }
   | { readonly type: 'setPreset'; readonly name: string }
   | { readonly type: 'setClaudeRuntime'; readonly name: string }
+  | { readonly type: 'setClaudeModel'; readonly id?: string }
   | {
       readonly type: 'setPhase';
       readonly preset: string;
@@ -52,10 +53,16 @@ export interface ConfigView {
     readonly launcherExists: boolean;
     readonly launcherExecutable: boolean;
   };
+  readonly claudeModel?: {
+    readonly id: string;
+    readonly displayName: string;
+    readonly model: string;
+  };
   readonly presets: readonly {
     readonly name: string;
     readonly workflowMode?: string;
     readonly claudeRuntime?: string;
+    readonly claudeModel?: string;
   }[];
   readonly profiles: readonly {
     readonly id: string;
@@ -71,6 +78,11 @@ export interface ConfigView {
     readonly launcher?: string;
     readonly launcherExists: boolean;
     readonly launcherExecutable: boolean;
+  }[];
+  readonly claudeModels: readonly {
+    readonly id: string;
+    readonly displayName: string;
+    readonly model: string;
   }[];
   readonly phases: readonly {
     readonly phase: ControllerPhase;
@@ -101,11 +113,12 @@ function getNonce(): string {
   return text;
 }
 
-function toView(snap: ConfigSnapshot): ConfigView {
+export function toView(snap: ConfigSnapshot): ConfigView {
   const effective = snap.effective;
   const activePreset = effective?.activePreset ?? snap.presets?.activePreset;
   const runtimeName = effective?.effective.claudeRuntime;
   const runtime = snap.runtimes?.claudeRuntimes.find((r) => r.name === runtimeName);
+  const model = effective?.effective.claudeModel;
 
   const phases = CONTROLLER_PHASES.map((phase) => {
     const conf = effective?.effective.codex[phase];
@@ -153,10 +166,20 @@ function toView(snap: ConfigSnapshot): ConfigView {
           }
         }
       : {}),
+    ...(model
+      ? {
+          claudeModel: {
+            id: model.id,
+            displayName: model.displayName ?? model.id,
+            model: model.model
+          }
+        }
+      : {}),
     presets: (snap.presets?.presets ?? []).map((p) => ({
       name: p.name,
       ...(p.workflowMode ? { workflowMode: p.workflowMode } : {}),
-      ...(p.claudeRuntime ? { claudeRuntime: p.claudeRuntime } : {})
+      ...(p.claudeRuntime ? { claudeRuntime: p.claudeRuntime } : {}),
+      ...(p.claudeModel ? { claudeModel: p.claudeModel } : {})
     })),
     profiles: (snap.profiles?.profiles ?? []).map((p) => ({
       id: p.id,
@@ -172,6 +195,11 @@ function toView(snap: ConfigSnapshot): ConfigView {
       ...(r.launcher ? { launcher: r.launcher } : {}),
       launcherExists: r.launcherExists,
       launcherExecutable: r.launcherExecutable
+    })),
+    claudeModels: (snap.models?.claudeModels ?? []).map((m) => ({
+      id: m.id,
+      displayName: m.displayName ?? m.id,
+      model: m.model
     })),
     phases,
     reasoningEfforts: REASONING_EFFORTS.map((value) => ({
@@ -222,7 +250,6 @@ export class ConfigPanel {
     private readonly extensionUri: vscode.Uri,
     private readonly store: ConfigStore,
     private readonly client: ConfigClient,
-    private readonly getProjectRoot: () => string | undefined,
     private readonly log: OutputLog
   ) {
     this.panel.webview.html = this.html();
@@ -239,7 +266,6 @@ export class ConfigPanel {
     extensionUri: vscode.Uri,
     store: ConfigStore,
     client: ConfigClient,
-    getProjectRoot: () => string | undefined,
     log: OutputLog
   ): void {
     const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
@@ -258,7 +284,7 @@ export class ConfigPanel {
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'dist', 'configWebview')]
       }
     );
-    ConfigPanel.current = new ConfigPanel(panel, extensionUri, store, client, getProjectRoot, log);
+    ConfigPanel.current = new ConfigPanel(panel, extensionUri, store, client, log);
     ConfigPanel.current.render();
     void store.refresh();
   }
@@ -284,6 +310,9 @@ export class ConfigPanel {
         return;
       case 'setClaudeRuntime':
         await this.setClaudeRuntime(parsed.name);
+        return;
+      case 'setClaudeModel':
+        await this.setClaudeModel(parsed.id);
         return;
       case 'setPhase':
         await this.setPhase(parsed);
@@ -344,25 +373,13 @@ export class ConfigPanel {
     }
   }
 
-  private requireProjectRoot(): string | undefined {
-    const root = this.getProjectRoot();
-    if (!root) {
-      void vscode.window.showErrorMessage(
-        'Open a folder to change autonomous-development configuration.'
-      );
-    }
-    return root;
-  }
-
   private async setPreset(name: string): Promise<void> {
     if (!isWorkspaceTrusted()) {
       void vscode.window.showErrorMessage('Configuration mutations require a trusted workspace.');
       return;
     }
-    const root = this.requireProjectRoot();
-    if (!root) return;
     try {
-      await this.client.setActivePreset(root, name);
+      await this.client.setActivePreset(name);
       await this.store.refresh();
       this.render();
     } catch (err) {
@@ -375,10 +392,8 @@ export class ConfigPanel {
       void vscode.window.showErrorMessage('Configuration mutations require a trusted workspace.');
       return;
     }
-    const root = this.requireProjectRoot();
-    if (!root) return;
     try {
-      await this.client.setClaudeRuntime(root, name);
+      await this.client.setClaudeRuntime(name);
       await this.store.refresh();
       this.render();
       void vscode.window.showInformationMessage(
@@ -386,6 +401,20 @@ export class ConfigPanel {
       );
     } catch (err) {
       this.reportError('Set Claude runtime', err);
+    }
+  }
+
+  private async setClaudeModel(id: string | undefined): Promise<void> {
+    if (!isWorkspaceTrusted()) {
+      void vscode.window.showErrorMessage('Configuration mutations require a trusted workspace.');
+      return;
+    }
+    try {
+      await this.client.setClaudeModel(id);
+      await this.store.refresh();
+      this.render();
+    } catch (err) {
+      this.reportError('Set Claude model', err);
     }
   }
 
@@ -399,14 +428,12 @@ export class ConfigPanel {
       void vscode.window.showErrorMessage('Configuration mutations require a trusted workspace.');
       return;
     }
-    const root = this.requireProjectRoot();
-    if (!root) return;
     if (msg.preset.length === 0) {
       void vscode.window.showErrorMessage('Select an active preset before configuring phases.');
       return;
     }
     try {
-      await this.client.setPhase(root, {
+      await this.client.setPhase({
         preset: msg.preset,
         phase: msg.phase,
         ...(msg.profile !== undefined ? { profile: msg.profile } : {}),

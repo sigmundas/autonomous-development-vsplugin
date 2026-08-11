@@ -13,6 +13,10 @@ import type {
   BaselineInfo,
   CodexRun,
   CodexRunTokens,
+  CompletionDisposition,
+  CompletionDispositionFinding,
+  CompletionEvaluation,
+  CompletionEvaluationResult,
   CumulativeAcceptanceCriterion,
   CumulativeFinding,
   RepositoryInfo,
@@ -93,6 +97,8 @@ export function normalizeStatus(raw: string): RunStatus {
     case 'complete':
     case 'completed':
       return 'complete';
+    case 'complete_with_followups':
+      return 'complete_with_followups';
     case 'blocked':
       return 'blocked';
     case 'cancelled':
@@ -155,7 +161,10 @@ const KNOWN_ARTIFACT_KEYS: ReadonlyArray<[keyof Omit<ArtifactMap, 'raw'>, string
   ['plan', 'plan'],
   ['acceptedPlan', 'accepted_plan'],
   ['review', 'review'],
-  ['adversarial', 'adversarial']
+  ['adversarial', 'adversarial'],
+  ['followUpsJson', 'follow_ups_json'],
+  ['followUpsMarkdown', 'follow_ups_markdown'],
+  ['followUpContext', 'follow_up_context']
 ];
 
 function normalizeArtifacts(value: unknown): ArtifactMap {
@@ -315,6 +324,118 @@ function normalizeRisk(value: unknown): RiskInfo {
   return {
     requiresAdversarialReview: value['requires_adversarial_review'] === true,
     reasons: asStringArray(value['reasons'])
+  };
+}
+
+const COMPLETION_DISPOSITIONS = new Set<CompletionDisposition>([
+  'MUST_FIX_NOW',
+  'FIX_LATER',
+  'ACCEPTED_WITH_EVIDENCE',
+  'HUMAN_DECISION_REQUIRED'
+]);
+
+const COMPLETION_RESULTS = new Set<CompletionEvaluationResult>([
+  'ready',
+  'ready_with_followups',
+  'must_fix_now',
+  'human_decision_required'
+]);
+
+function normalizeCompletionFinding(value: unknown): CompletionDispositionFinding | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const finding: {
+    sourcePhase?: string;
+    sourceRound?: number;
+    sourceId?: string;
+    title?: string;
+    severity?: string;
+    category?: string;
+    description?: string;
+    impact?: string;
+    disposition?: CompletionDisposition;
+    rationale?: string;
+    evidence?: string;
+    relevantAcceptanceCriteria: string[];
+    relevantFiles: string[];
+    suggestedFutureScope?: string;
+    recommendedVerification: string[];
+    humanInputEventuallyRequired?: boolean;
+    provenance?: string;
+    raw: Record<string, unknown>;
+  } = {
+    relevantAcceptanceCriteria: asStringArray(value['relevant_acceptance_criteria']),
+    relevantFiles: asStringArray(value['relevant_files']),
+    recommendedVerification: asStringArray(value['recommended_verification']),
+    raw: value
+  };
+  const strings: ReadonlyArray<[keyof typeof finding, string]> = [
+    ['sourcePhase', 'source_phase'],
+    ['sourceId', 'source_id'],
+    ['title', 'title'],
+    ['severity', 'severity'],
+    ['category', 'category'],
+    ['description', 'description'],
+    ['impact', 'impact'],
+    ['rationale', 'rationale'],
+    ['evidence', 'evidence'],
+    ['suggestedFutureScope', 'suggested_future_scope'],
+    ['provenance', 'provenance']
+  ];
+  for (const [target, source] of strings) {
+    const text = asString(value[source]);
+    if (text !== undefined) {
+      (finding as Record<string, unknown>)[target] = text;
+    }
+  }
+  const sourceRound = asInt(value['source_round']);
+  if (sourceRound !== undefined) finding.sourceRound = sourceRound;
+  const disposition = asString(value['disposition']);
+  if (disposition && COMPLETION_DISPOSITIONS.has(disposition as CompletionDisposition)) {
+    finding.disposition = disposition as CompletionDisposition;
+  }
+  if (typeof value['human_input_eventually_required'] === 'boolean') {
+    finding.humanInputEventuallyRequired = value['human_input_eventually_required'];
+  }
+  return finding;
+}
+
+function normalizeCompletionEvaluation(value: unknown): CompletionEvaluation | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const rawFindings = Array.isArray(value['findings']) ? value['findings'] : [];
+  const findings = rawFindings
+    .map(normalizeCompletionFinding)
+    .filter((item): item is CompletionDispositionFinding => item !== undefined);
+  const result: {
+    evaluatedAt?: string;
+    summary?: string;
+    result?: CompletionEvaluationResult;
+    sourceReviewRound?: number;
+    sourceAdversarialRound?: number;
+    findings: CompletionDispositionFinding[];
+  } = { findings };
+  const evaluatedAt = asString(value['evaluated_at']);
+  if (evaluatedAt !== undefined) result.evaluatedAt = evaluatedAt;
+  const summary = asString(value['summary']);
+  if (summary !== undefined) result.summary = summary;
+  const rawResult = asString(value['result']);
+  if (rawResult && COMPLETION_RESULTS.has(rawResult as CompletionEvaluationResult)) {
+    result.result = rawResult as CompletionEvaluationResult;
+  }
+  const reviewRound = asInt(value['source_review_round']);
+  if (reviewRound !== undefined) result.sourceReviewRound = reviewRound;
+  const adversarialRound = asInt(value['source_adversarial_round']);
+  if (adversarialRound !== undefined) result.sourceAdversarialRound = adversarialRound;
+  return result;
+}
+
+function normalizeFollowUpSource(value: unknown): RunState['followUpSource'] {
+  if (!isPlainObject(value)) return undefined;
+  const sourceRunId = asString(value['source_run_id']);
+  const contextArtifact = asString(value['context_artifact']);
+  return {
+    ...(sourceRunId !== undefined ? { sourceRunId } : {}),
+    selectedIds: asStringArray(value['selected_ids']),
+    ...(contextArtifact !== undefined ? { contextArtifact } : {})
   };
 }
 
@@ -688,6 +809,9 @@ export function normalizeRunState(value: unknown): RunStateParseResult {
     ...(asNonEmptyString(value['awaiting_human_decision_reason'])
       ? { awaitingHumanDecisionReason: asNonEmptyString(value['awaiting_human_decision_reason']) }
       : {}),
+    ...(asNonEmptyString(value['awaiting_human_decision_phase'])
+      ? { awaitingHumanDecisionPhase: asNonEmptyString(value['awaiting_human_decision_phase']) }
+      : {}),
     ...(asNonEmptyString(value['parent_run_id'])
       ? { parentRunId: asNonEmptyString(value['parent_run_id']) }
       : {}),
@@ -698,6 +822,9 @@ export function normalizeRunState(value: unknown): RunStateParseResult {
           return total + (amount !== undefined && amount > 0 ? amount : 0);
         }, 0)
       : 0,
+    reviewBudgetExhausted:
+      value['phase'] === 'review-budget-exhausted' ||
+      (isPlainObject(value['recovery']) && value['recovery']['kind'] === 'review-budget-exhausted'),
     artifacts: normalizeArtifacts(value['artifacts']),
     verification: normalizeVerification(value['verification']),
     reviews: normalizeReviewRefs(value['reviews']),
@@ -705,6 +832,14 @@ export function normalizeRunState(value: unknown): RunStateParseResult {
     risk: normalizeRisk(value['risk']),
     notes: asStringArray(value['notes']),
     completionGateFailures: asStringArray(value['completion_gate_failures']),
+    ...((): { completionEvaluation?: CompletionEvaluation } => {
+      const completionEvaluation = normalizeCompletionEvaluation(value['completion_evaluation']);
+      return completionEvaluation ? { completionEvaluation } : {};
+    })(),
+    ...((): { followUpSource?: RunState['followUpSource'] } => {
+      const followUpSource = normalizeFollowUpSource(value['follow_up_source']);
+      return followUpSource ? { followUpSource } : {};
+    })(),
     cumulativeFindings: normalizeCumulativeFindings(value['cumulative_findings'], diagnostics),
     cumulativeAcceptanceCriteria: normalizeAcceptanceCriteria(
       value['cumulative_acceptance_criteria'],

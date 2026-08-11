@@ -124,8 +124,12 @@ function renderTaskBlock(view: DashboardView): HTMLElement {
 }
 
 function renderHeader(view: DashboardView): HTMLElement {
+  const statusLabel =
+    view.status === 'complete_with_followups'
+      ? `Complete · ${view.completion.followUpCount} follow-up${view.completion.followUpCount === 1 ? '' : 's'}`
+      : view.status;
   const badges = el('div', { class: 'badges' }, [
-    el('span', { class: `badge status-${view.status}` }, [view.status]),
+    el('span', { class: `badge status-${view.status}` }, [statusLabel]),
     view.phase && el('span', { class: 'badge phase' }, [view.phase]),
     view.gatesPass
       ? el('span', { class: 'badge ok' }, ['gates pass'])
@@ -161,18 +165,18 @@ function renderHeader(view: DashboardView): HTMLElement {
   const canCancel = view.status === 'active';
   const terminalOpen = view.claudeTerminalOpen;
   const actions = el('div', { class: 'run-actions' }, [
-    view.recovery.reviewBudgetExhausted &&
-    (view.status === 'active' || view.status === 'blocked')
+    view.recovery.reviewBudgetExhausted && (view.status === 'active' || view.status === 'blocked')
       ? button(
           view.recovery.continuedByRunId
             ? `Resume review continuation ${view.recovery.continuedByRunId}`
             : 'Allow one more review',
-          () => command('autonomousDev.authorizeReview'), {
-          class: 'primary',
-          title:
-            view.status === 'blocked'
-              ? 'Create or reuse a linked continuation, authorize +1 review there, and resume it without mutating the terminal parent.'
-              : 'Explicitly authorize +1 review for this run and resume it without changing its snapshotted or global configuration.'
+          () => command('autonomousDev.authorizeReview'),
+          {
+            class: 'primary',
+            title:
+              view.status === 'blocked'
+                ? 'Create or reuse a linked continuation, authorize +1 review there, and resume it without mutating the terminal parent.'
+                : 'Explicitly authorize +1 review for this run and resume it without changing its snapshotted or global configuration.'
           }
         )
       : null,
@@ -183,11 +187,21 @@ function renderHeader(view: DashboardView): HTMLElement {
             : view.recovery.continuedByRunId
               ? `Resume continuation ${view.recovery.continuedByRunId}`
               : 'Continue blocked run…',
-          () => command('autonomousDev.continueBlockedRun'), {
-          class: 'primary',
-          title: 'Create a linked follow-up on the same checkout with preserved context and evidence.'
+          () => command('autonomousDev.continueBlockedRun'),
+          {
+            class: 'primary',
+            title:
+              'Create a linked follow-up on the same checkout with preserved context and evidence.'
           }
         )
+      : null,
+    view.completion.followUpCount > 0
+      ? button('View follow-ups', () => command('autonomousDev.openFollowUps'))
+      : null,
+    view.status === 'complete_with_followups' && view.completion.followUpCount > 0
+      ? button('Start follow-up run…', () => command('autonomousDev.startFollowupRun'), {
+          class: 'primary'
+        })
       : null,
     canResume
       ? terminalOpen
@@ -205,9 +219,7 @@ function renderHeader(view: DashboardView): HTMLElement {
     canCancel
       ? button('Cancel run', () => command('autonomousDev.cancelRun'), { class: 'danger' })
       : null,
-    view.status === 'blocked'
-      ? button('Archive', () => command('autonomousDev.archiveRun'))
-      : null
+    view.status === 'blocked' ? button('Archive', () => command('autonomousDev.archiveRun')) : null
   ]);
 
   return el('header', { class: 'card header' }, [
@@ -215,6 +227,11 @@ function renderHeader(view: DashboardView): HTMLElement {
     badges,
     view.blockingReason
       ? el('p', { class: 'blocking' }, [`Blocked: ${view.blockingReason}`])
+      : null,
+    view.recovery.awaitingHumanDecision
+      ? el('p', { class: 'blocking' }, [
+          `Awaiting human decision${view.recovery.humanDecisionPhase ? ` from ${view.recovery.humanDecisionPhase}` : ''}: ${view.recovery.humanDecisionReason ?? 'See the recorded completion disposition.'}`
+        ])
       : null,
     view.recovery.reviewBudgetExhausted || view.status === 'blocked'
       ? el('p', { class: 'muted' }, [
@@ -252,6 +269,19 @@ function renderCurrentActivity(view: DashboardView): HTMLElement | null {
     ) {
       cells.push(kv('Now', 'Earlier review finished; Codex re-review is in progress'));
     }
+  }
+  if (view.adversarial.latestRound !== undefined || view.adversarial.latestVerdict) {
+    const round =
+      view.adversarial.latestRound !== undefined
+        ? `Round ${view.adversarial.latestRound}`
+        : 'Completed';
+    const verdict = view.adversarial.latestVerdict?.replaceAll('_', ' ');
+    cells.push(kv('Latest adversarial review', verdict ? `${round} · ${verdict}` : round));
+  }
+  if (view.recovery.awaitingHumanDecision) {
+    cells.push(
+      kv('Awaiting decision', view.recovery.humanDecisionReason ?? 'Human input required')
+    );
   }
   if (activity.latestNote) cells.push(kv('Latest note', activity.latestNote));
   cells.push(
@@ -343,8 +373,8 @@ function renderStatus(view: DashboardView): HTMLElement {
     kv('Status', view.status),
     kv(
       'Review budget',
-      `${view.reviewBudget.consumed}/${view.reviewBudget.max} used (${view.reviewBudget.remaining} left)`
-        + (view.reviewBudget.max > view.reviewBudget.originalMax
+      `${view.reviewBudget.consumed}/${view.reviewBudget.max} used (${view.reviewBudget.remaining} left)` +
+        (view.reviewBudget.max > view.reviewBudget.originalMax
           ? `; original limit ${view.reviewBudget.originalMax}, +${view.reviewBudget.max - view.reviewBudget.originalMax} authorized`
           : '')
     ),
@@ -456,7 +486,7 @@ function renderAcceptanceCriteria(view: DashboardView): HTMLElement | null {
         el('span', { class: `ac-status ac-${(c.status ?? 'unknown').toLowerCase()}` }, [
           c.assessmentState === 'needs_reassessment'
             ? `${c.status ?? 'unknown'} (needs reassessment)`
-            : c.status ?? 'unknown'
+            : (c.status ?? 'unknown')
         ])
       ]),
       el('td', {}, [c.blocking ? 'blocking' : 'satisfied']),
@@ -475,6 +505,43 @@ function renderAcceptanceCriteria(view: DashboardView): HTMLElement | null {
         (ac.blockingCount > 0 ? ` — ${ac.blockingCount} blocking completion` : '')
     ]),
     el('table', { class: 'checks' }, [el('thead', {}, [head]), el('tbody', {}, rows)])
+  );
+}
+
+function renderFollowUps(view: DashboardView): HTMLElement | null {
+  if (view.followUps.length === 0) return null;
+  return section(
+    `Follow-ups (${view.followUps.length})`,
+    view.completion.summary ? el('p', { class: 'muted' }, [view.completion.summary]) : null,
+    el(
+      'div',
+      { class: 'findings' },
+      view.followUps.map((item) =>
+        el('div', { class: 'finding released' }, [
+          el('div', { class: 'finding-head' }, [
+            el('span', { class: 'fid' }, [item.id]),
+            item.severity
+              ? el('span', { class: `sev sev-${item.severity.toLowerCase()}` }, [item.severity])
+              : null,
+            item.category ? el('span', { class: 'cat' }, [item.category]) : null,
+            el('strong', {}, [item.title])
+          ]),
+          item.description ? el('p', { class: 'finding-desc' }, [item.description]) : null,
+          item.whyDeferred
+            ? el('p', { class: 'finding-prov muted' }, [`Deferred: ${item.whyDeferred}`])
+            : null,
+          item.provenance
+            ? el('p', { class: 'finding-prov muted' }, [`Provenance: ${item.provenance}`])
+            : null
+        ])
+      )
+    ),
+    el('div', { class: 'compare-actions' }, [
+      button('View follow-ups', () => command('autonomousDev.openFollowUps')),
+      button('Start follow-up run…', () => command('autonomousDev.startFollowupRun'), {
+        class: 'primary'
+      })
+    ])
   );
 }
 
@@ -763,6 +830,10 @@ function renderConfigSnapshot(view: DashboardView): HTMLElement | null {
   const rows: Child[] = [
     kv('Preset used (this run)', snap.preset ?? '—'),
     kv('Claude runtime (this run)', snap.claudeRuntime ?? '—'),
+    kv(
+      'Claude model requested (this run)',
+      snap.claudeModel?.displayName ?? snap.claudeModel?.id ?? 'Default'
+    ),
     kv('Workflow mode (this run)', snap.workflowMode ?? '—'),
     kv(
       'Maximum review rounds (this run)',
@@ -827,6 +898,7 @@ function render(view: DashboardView): void {
     renderConfigSnapshot(view),
     renderCumulativeFindings(view),
     renderAcceptanceCriteria(view),
+    renderFollowUps(view),
     renderArtifacts(view),
     renderVerification(view),
     renderReviewRounds('Independent review', view.review.rounds),

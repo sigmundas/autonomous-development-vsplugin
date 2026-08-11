@@ -5,9 +5,7 @@ import type { WorkflowStage } from '@semanticmatter/core';
 import { refineStagesForImplementerRunning } from '../src/dashboard/renderModel';
 
 /** Minimal 12-stage list — only ids and initial statuses matter here. */
-function makeStages(
-  overrides: Partial<Record<string, WorkflowStage['status']>>
-): WorkflowStage[] {
+function makeStages(overrides: Partial<Record<string, WorkflowStage['status']>>): WorkflowStage[] {
   const seed: Array<{ id: string; title: string; status: WorkflowStage['status'] }> = [
     { id: 'initialized', title: 'Initialized', status: 'complete' },
     { id: 'idea-enhanced', title: 'Idea Enhanced', status: 'complete' },
@@ -34,30 +32,63 @@ function byId(stages: WorkflowStage[]): Map<string, WorkflowStage> {
 }
 
 describe('refineStagesForImplementerRunning — Rule 1 (Implementing stays active)', () => {
+  for (const scenario of [
+    {
+      phase: 'spec-accepted',
+      activeStage: 'plan-proposed',
+      overrides: { 'plan-proposed': 'active', implementing: 'pending', verification: 'pending' }
+    },
+    {
+      phase: 'plan-proposed',
+      activeStage: 'plan-accepted',
+      overrides: { 'plan-accepted': 'active', implementing: 'pending', verification: 'pending' }
+    }
+  ] as const) {
+    it(`${scenario.phase} + Claude terminal preserves planning as the sole active stage`, () => {
+      const refined = refineStagesForImplementerRunning(makeStages(scenario.overrides), {
+        claudeTerminalOpen: true,
+        controllerPhase: scenario.phase,
+        hasChecks: false,
+        status: 'active'
+      });
+
+      assert.equal(byId(refined).get(scenario.activeStage)?.status, 'active');
+      assert.equal(byId(refined).get('implementing')?.status, 'pending');
+      assert.deepEqual(
+        refined.filter((stage) => stage.status === 'active').map((stage) => stage.id),
+        [scenario.activeStage]
+      );
+    });
+  }
+
   it('holds Implementing at active while a Claude terminal is alive AND phase is implementing', () => {
     const canonical = makeStages({ implementing: 'complete', verification: 'active' });
-    const refined = byId(
-      refineStagesForImplementerRunning(canonical, {
-        claudeTerminalOpen: true,
-        controllerPhase: 'implementing',
-        hasChecks: true,
-        status: 'active'
-      })
+    const stages = refineStagesForImplementerRunning(canonical, {
+      claudeTerminalOpen: true,
+      controllerPhase: 'implementing',
+      hasChecks: true,
+      status: 'active'
+    });
+    assert.equal(byId(stages).get('implementing')?.status, 'active');
+    assert.deepEqual(
+      stages.filter((stage) => stage.status === 'active').map((stage) => stage.id),
+      ['implementing']
     );
-    assert.equal(refined.get('implementing')?.status, 'active');
   });
 
   it('holds Implementing at active while a Claude terminal is alive AND phase is plan-accepted', () => {
     const canonical = makeStages({ implementing: 'pending', verification: 'pending' });
-    const refined = byId(
-      refineStagesForImplementerRunning(canonical, {
-        claudeTerminalOpen: true,
-        controllerPhase: 'plan-accepted',
-        hasChecks: false,
-        status: 'active'
-      })
+    const stages = refineStagesForImplementerRunning(canonical, {
+      claudeTerminalOpen: true,
+      controllerPhase: 'plan-accepted',
+      hasChecks: false,
+      status: 'active'
+    });
+    assert.equal(byId(stages).get('implementing')?.status, 'active');
+    assert.deepEqual(
+      stages.filter((stage) => stage.status === 'active').map((stage) => stage.id),
+      ['implementing']
     );
-    assert.equal(refined.get('implementing')?.status, 'active');
   });
 
   it('does NOT force Implementing active when no Claude terminal is alive', () => {
@@ -104,7 +135,7 @@ describe('refineStagesForImplementerRunning — Rule 1 (Implementing stays activ
   });
 });
 
-describe('refineStagesForImplementerRunning — Rule 2 (Verification only active with all three conditions)', () => {
+describe('refineStagesForImplementerRunning — Rule 2 (Verification requires controller state and checks)', () => {
   const need3 = { status: 'active' as const };
 
   it('Verification stays pending when the controller has not transitioned to verification', () => {
@@ -133,7 +164,7 @@ describe('refineStagesForImplementerRunning — Rule 2 (Verification only active
     assert.equal(refined.get('verification')?.status, 'pending');
   });
 
-  it('Verification becomes active when all three conditions hold', () => {
+  it('Verification becomes active when both conditions hold', () => {
     const canonical = makeStages({ verification: 'active' });
     const refined = byId(
       refineStagesForImplementerRunning(canonical, {
@@ -223,7 +254,7 @@ describe('refineStagesForImplementerRunning — combined rules', () => {
 });
 
 describe('refineStagesForImplementerRunning — terminal statuses are passthrough', () => {
-  for (const status of ['complete', 'cancelled', 'archived'] as const) {
+  for (const status of ['complete', 'complete_with_followups', 'cancelled', 'archived'] as const) {
     it(`does not refine a ${status} run`, () => {
       const canonical = makeStages({ implementing: 'complete', verification: 'complete' });
       const refined = refineStagesForImplementerRunning(canonical, {

@@ -66,6 +66,7 @@ export interface AutonomousPreset {
   readonly name: string;
   readonly workflowMode?: ControllerWorkflowMode;
   readonly claudeRuntime?: string;
+  readonly claudeModel?: string;
   readonly phases: readonly ControllerPhase[];
 }
 
@@ -82,6 +83,8 @@ export interface ClaudeRuntime {
   readonly displayName?: string;
   readonly launcher?: string;
   readonly args: readonly string[];
+  readonly allowedCommands?: readonly string[];
+  readonly executablePaths?: readonly string[];
   readonly launcherExists: boolean;
   readonly launcherExecutable: boolean;
 }
@@ -90,6 +93,17 @@ export interface ClaudeRuntime {
 export interface ClaudeRuntimeList {
   readonly configPath?: string;
   readonly claudeRuntimes: readonly ClaudeRuntime[];
+}
+
+export interface ClaudeModel {
+  readonly id: string;
+  readonly displayName?: string;
+  readonly model: string;
+}
+
+export interface ClaudeModelList {
+  readonly configPath?: string;
+  readonly claudeModels: readonly ClaudeModel[];
 }
 
 /** Per-phase Codex configuration snippet. */
@@ -117,9 +131,11 @@ export interface EffectiveConfiguration {
     readonly workflow: WorkflowConfiguration;
     readonly codex: Readonly<Record<string, PhaseConfiguration>>;
     readonly claudeRuntime?: string;
+    readonly claudeModel?: ClaudeModel;
   };
   readonly presets: readonly string[];
   readonly claudeRuntimes: readonly string[];
+  readonly claudeModels: readonly string[];
   readonly warnings: readonly string[];
 }
 
@@ -244,10 +260,14 @@ export function parseEffectiveConfiguration(
       codex,
       ...(asString(effectiveRaw['claude_runtime'])
         ? { claudeRuntime: asString(effectiveRaw['claude_runtime']) as string }
+        : {}),
+      ...(parseClaudeModel(effectiveRaw['claude_model'])
+        ? { claudeModel: parseClaudeModel(effectiveRaw['claude_model']) as ClaudeModel }
         : {})
     },
     presets: asStringArray(raw['presets']),
     claudeRuntimes: asStringArray(raw['claude_runtimes']),
+    claudeModels: asStringArray(raw['claude_models']),
     warnings: asStringArray(raw['warnings'])
   };
   return { ok: true, value };
@@ -326,6 +346,9 @@ export function parsePresetList(raw: unknown): ControllerConfigResponse<PresetLi
       ...(asString(entry['claude_runtime'])
         ? { claudeRuntime: asString(entry['claude_runtime']) as string }
         : {}),
+      ...(asString(entry['claude_model'])
+        ? { claudeModel: asString(entry['claude_model']) as string }
+        : {}),
       phases
     });
   }
@@ -340,9 +363,7 @@ export function parsePresetList(raw: unknown): ControllerConfigResponse<PresetLi
 }
 
 /** Parse a `config-list-claude-runtimes` payload. */
-export function parseClaudeRuntimeList(
-  raw: unknown
-): ControllerConfigResponse<ClaudeRuntimeList> {
+export function parseClaudeRuntimeList(raw: unknown): ControllerConfigResponse<ClaudeRuntimeList> {
   if (!isObject(raw)) {
     return { ok: false, error: 'config-list-claude-runtimes response is not an object' };
   }
@@ -359,6 +380,8 @@ export function parseClaudeRuntimeList(
         : {}),
       ...(asString(entry['launcher']) ? { launcher: asString(entry['launcher']) as string } : {}),
       args: asStringArray(entry['args']),
+      allowedCommands: asStringArray(entry['allowed_commands']),
+      executablePaths: asStringArray(entry['executable_paths']),
       launcherExists: asBool(entry['launcher_exists']),
       launcherExecutable: asBool(entry['launcher_executable'])
     });
@@ -368,6 +391,38 @@ export function parseClaudeRuntimeList(
     claudeRuntimes: runtimes
   };
   return { ok: true, value };
+}
+
+export function parseClaudeModelList(raw: unknown): ControllerConfigResponse<ClaudeModelList> {
+  if (!isObject(raw)) {
+    return { ok: false, error: 'config-list-claude-models response is not an object' };
+  }
+  const models = (Array.isArray(raw['claude_models']) ? raw['claude_models'] : [])
+    .map(parseClaudeModel)
+    .filter((model): model is ClaudeModel => model !== undefined);
+  return {
+    ok: true,
+    value: {
+      ...(asString(raw['config_path'])
+        ? { configPath: asString(raw['config_path']) as string }
+        : {}),
+      claudeModels: models
+    }
+  };
+}
+
+function parseClaudeModel(raw: unknown): ClaudeModel | undefined {
+  if (!isObject(raw)) return undefined;
+  const id = asString(raw['id']);
+  const model = asString(raw['model']);
+  if (!id || !model) return undefined;
+  return {
+    id,
+    model,
+    ...(asString(raw['display_name'])
+      ? { displayName: asString(raw['display_name']) as string }
+      : {})
+  };
 }
 
 /**
@@ -380,6 +435,7 @@ export interface RunConfigSnapshot {
   readonly workflow?: WorkflowConfiguration;
   readonly codex: Readonly<Record<string, PhaseConfiguration>>;
   readonly claudeRuntime?: string;
+  readonly claudeModel?: ClaudeModel;
 }
 
 /** Extract a config_snapshot from an arbitrary run-state object. */
@@ -400,6 +456,9 @@ export function parseRunConfigSnapshot(raw: unknown): RunConfigSnapshot | undefi
     codex,
     ...(asString(snap['claude_runtime'])
       ? { claudeRuntime: asString(snap['claude_runtime']) as string }
+      : {}),
+    ...(parseClaudeModel(snap['claude_model'])
+      ? { claudeModel: parseClaudeModel(snap['claude_model']) as ClaudeModel }
       : {})
   };
 }

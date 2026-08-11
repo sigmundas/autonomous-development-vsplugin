@@ -143,6 +143,13 @@ export interface WorkflowModel {
   readonly codexUsage: CodexUsageModel;
   /** Effective workflow mode (auto | lean | standard | rigorous), when recorded. */
   readonly effectiveMode?: string;
+  readonly completionEvaluation?: {
+    readonly result?: string;
+    readonly summary?: string;
+    readonly followUpCount: number;
+    readonly mustFixCount: number;
+    readonly humanDecisionCount: number;
+  };
 }
 
 function isPass(verdict: string | undefined): boolean {
@@ -260,7 +267,7 @@ export function evaluateWorkflow(input: EvaluatorInput): WorkflowModel {
   const hasCumulativeFindings = state.cumulativeFindings.length > 0;
   const cumulativeSevere = hasCumulativeFindings && cumulativeFindingsModel.blockingSevereCount > 0;
 
-  const completionGateFailures = evaluateGates({
+  const derivedGateFailures = evaluateGates({
     acceptedSpecExists: input.acceptedSpecExists,
     acceptedPlanExists: input.acceptedPlanExists,
     hasChecks: verification.hasChecks,
@@ -282,8 +289,15 @@ export function evaluateWorkflow(input: EvaluatorInput): WorkflowModel {
       : {}),
     requiresAdversarial,
     hasAdversarial,
-    ...(latestAdversarialVerdict !== undefined ? { latestAdversarialVerdict } : {})
+    ...(latestAdversarialVerdict !== undefined ? { latestAdversarialVerdict } : {}),
+    ...(state.completionEvaluation?.result !== undefined
+      ? { completionEvaluationResult: state.completionEvaluation.result }
+      : {})
   });
+  // A successful terminal disposition is the controller's authoritative
+  // completion decision. Do not resurrect pass-only legacy gates in the UI.
+  const completionGateFailures =
+    state.status === 'complete_with_followups' ? [] : derivedGateFailures;
 
   const recommendedNextAction = recommendNextAction({
     status: state.status,
@@ -300,7 +314,11 @@ export function evaluateWorkflow(input: EvaluatorInput): WorkflowModel {
     blockingAcceptanceCriteria: acceptanceCriteriaModel.blockingCount > 0,
     requiresAdversarial,
     hasAdversarial,
-    ...(latestAdversarialVerdict !== undefined ? { latestAdversarialVerdict } : {})
+    ...(latestAdversarialVerdict !== undefined ? { latestAdversarialVerdict } : {}),
+    ...(state.completionEvaluation?.result !== undefined
+      ? { completionEvaluationResult: state.completionEvaluation.result }
+      : {}),
+    awaitingHumanDecision: state.awaitingHumanDecision === true
   });
 
   const stageFacts: StageFacts = {
@@ -321,7 +339,21 @@ export function evaluateWorkflow(input: EvaluatorInput): WorkflowModel {
     requiresAdversarial,
     hasAdversarial,
     adversarialPassed: isPass(latestAdversarialVerdict),
+    ...(adversarialLatest?.round !== undefined
+      ? { latestAdversarialRound: adversarialLatest.round }
+      : {}),
+    ...(latestAdversarialVerdict !== undefined ? { latestAdversarialVerdict } : {}),
     nextActionCode: recommendedNextAction.code,
+    awaitingHumanDecision: state.awaitingHumanDecision === true,
+    ...(state.awaitingHumanDecisionReason !== undefined
+      ? { awaitingHumanDecisionReason: state.awaitingHumanDecisionReason }
+      : {}),
+    ...(state.awaitingHumanDecisionPhase !== undefined
+      ? { awaitingHumanDecisionPhase: state.awaitingHumanDecisionPhase }
+      : {}),
+    ...(state.completionEvaluation?.result !== undefined
+      ? { completionEvaluationResult: state.completionEvaluation.result }
+      : {}),
     ...(state.phase && state.phase.length > 0 ? { controllerPhase: state.phase } : {})
   };
   const stages = deriveStages(stageFacts);
@@ -351,12 +383,36 @@ export function evaluateWorkflow(input: EvaluatorInput): WorkflowModel {
     hasReviews: hasAdversarial,
     ...(adversarialLatest?.round !== undefined ? { latestRound: adversarialLatest.round } : {}),
     ...(latestAdversarialVerdict !== undefined ? { latestVerdict: latestAdversarialVerdict } : {}),
-    satisfied: !requiresAdversarial || (hasAdversarial && isPass(latestAdversarialVerdict))
+    satisfied:
+      !requiresAdversarial ||
+      (hasAdversarial && isPass(latestAdversarialVerdict)) ||
+      state.completionEvaluation?.result === 'ready' ||
+      state.completionEvaluation?.result === 'ready_with_followups'
   };
 
   const blockingReason = blockingReasonFor(state);
   const checkpoint = buildCheckpointModel(state);
   const codexUsage = buildCodexUsageModel(state);
+
+  const completionEvaluation = state.completionEvaluation
+    ? {
+        ...(state.completionEvaluation.result !== undefined
+          ? { result: state.completionEvaluation.result }
+          : {}),
+        ...(state.completionEvaluation.summary !== undefined
+          ? { summary: state.completionEvaluation.summary }
+          : {}),
+        followUpCount: state.completionEvaluation.findings.filter(
+          (item) => item.disposition === 'FIX_LATER'
+        ).length,
+        mustFixCount: state.completionEvaluation.findings.filter(
+          (item) => item.disposition === 'MUST_FIX_NOW'
+        ).length,
+        humanDecisionCount: state.completionEvaluation.findings.filter(
+          (item) => item.disposition === 'HUMAN_DECISION_REQUIRED'
+        ).length
+      }
+    : undefined;
 
   return {
     runId: state.runId,
@@ -381,6 +437,7 @@ export function evaluateWorkflow(input: EvaluatorInput): WorkflowModel {
     acceptanceCriteria: acceptanceCriteriaModel,
     ...(checkpoint !== undefined ? { checkpoint } : {}),
     codexUsage,
-    ...(state.effectiveMode !== undefined ? { effectiveMode: state.effectiveMode } : {})
+    ...(state.effectiveMode !== undefined ? { effectiveMode: state.effectiveMode } : {}),
+    ...(completionEvaluation !== undefined ? { completionEvaluation } : {})
   };
 }

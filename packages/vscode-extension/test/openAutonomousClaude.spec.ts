@@ -93,6 +93,25 @@ describe('openAutonomousClaude — terminal name identity', () => {
 });
 
 describe('openAutonomousClaude — plan construction', () => {
+  it('launches Default without --model and selected models with the exact value', () => {
+    const runtimeWithoutModel = { ...RUNTIME, args: [] };
+    const defaultPlan = planOpenAutonomousClaude(
+      runtimeWithoutModel,
+      '/work/repo',
+      '/opt/controller.py'
+    );
+    assert.equal(defaultPlan.launcherArgv.includes('--model'), false);
+    const selected = planOpenAutonomousClaude(
+      runtimeWithoutModel,
+      '/work/repo',
+      '/opt/controller.py',
+      undefined,
+      { id: 'custom', displayName: 'Custom', model: 'custom/value with spaces' }
+    );
+    const index = selected.launcherArgv.indexOf('--model');
+    assert.equal(selected.launcherArgv[index + 1], 'custom/value with spaces');
+  });
+
   it('maps each selected run mode to the existing autonomous skill', () => {
     assert.equal(
       newRunBootstrapPrompt({ mode: 'feature', feature: 'Build a dashboard' }),

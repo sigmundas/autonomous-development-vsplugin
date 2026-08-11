@@ -18,6 +18,13 @@ export type {
   ReviewRef,
   ReviewCheckpoint,
   RiskInfo,
+  CompletionDisposition,
+  CompletionEvaluationResult,
+  CompletionDispositionFinding,
+  CompletionEvaluation,
+  FollowUpSource,
+  FollowUpItem,
+  FollowUpsArtifact,
   RunState,
   ReviewFinding,
   ReviewDocument,
@@ -29,6 +36,8 @@ export type {
   CodexRun,
   CodexRunTokens
 } from './types';
+export { parseFollowUpsText } from './followUps';
+export { parseContinuationContextText, type ContinuationContext } from './continuationContext';
 export {
   TERMINAL_STATUSES,
   SEVERE_FINDING_SEVERITIES,
@@ -177,6 +186,7 @@ export {
   parseProfileList,
   parsePresetList,
   parseClaudeRuntimeList,
+  parseClaudeModelList,
   parseRunConfigSnapshot,
   type ControllerWorkflowMode,
   type CodexProfile,
@@ -185,6 +195,8 @@ export {
   type PresetList,
   type ClaudeRuntime,
   type ClaudeRuntimeList,
+  type ClaudeModel,
+  type ClaudeModelList,
   type PhaseConfiguration,
   type WorkflowConfiguration,
   type EffectiveConfiguration,

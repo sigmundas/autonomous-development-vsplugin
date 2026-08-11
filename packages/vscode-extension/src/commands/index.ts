@@ -144,7 +144,10 @@ async function resolveProjectRoot(): Promise<string | undefined> {
     return undefined;
   }
   if (folders.length === 1) {
-    return folders[0]?.uri.fsPath;
+    const path = folders[0]?.uri.fsPath;
+    if (path && resolveWorkspaceRepoId(path)) return path;
+    void vscode.window.showErrorMessage('Open a Git repository to start an autonomous run.');
+    return undefined;
   }
   const picked = await vscode.window.showQuickPick(
     folders.map((folder) => ({
@@ -154,7 +157,12 @@ async function resolveProjectRoot(): Promise<string | undefined> {
     })),
     { title: 'Select the repository to start a run in' }
   );
-  return picked?.path;
+  if (!picked) return undefined;
+  if (!resolveWorkspaceRepoId(picked.path)) {
+    void vscode.window.showErrorMessage('Open a Git repository to start an autonomous run.');
+    return undefined;
+  }
+  return picked.path;
 }
 
 async function resolveTarget(store: RunStore, arg: CommandArg): Promise<DiscoveredRun | undefined> {
@@ -281,6 +289,7 @@ export function registerCommands(deps: CommandDeps): void {
   register('autonomousDev.openAcceptedPlan', runScoped(artifacts.openAcceptedPlan));
   register('autonomousDev.openLatestReview', runScoped(artifacts.openLatestReview));
   register('autonomousDev.openVerificationLog', runScoped(artifacts.openVerificationLog));
+  register('autonomousDev.openFollowUps', runScoped(artifacts.openFollowUps));
   register('autonomousDev.compareSpec', runScoped(artifacts.compareSpec));
   register('autonomousDev.comparePlan', runScoped(artifacts.comparePlan));
   register('autonomousDev.revealRunDirectory', runScoped(artifacts.revealRunDirectory));
@@ -309,6 +318,10 @@ export function registerCommands(deps: CommandDeps): void {
     'autonomousDev.continueBlockedRun',
     runScoped((run) => controller.continueBlockedRun(run, recoveryDeps))
   );
+  register(
+    'autonomousDev.startFollowupRun',
+    runScoped((run) => controller.startFollowupRun(run, recoveryDeps))
+  );
 
   register('autonomousDev.setupController', () =>
     runGuidedSetup({
@@ -334,6 +347,9 @@ export function registerCommands(deps: CommandDeps): void {
   );
   register('autonomousDev.configureClaudeRuntime', () =>
     configCmds.configureClaudeRuntime(deps.configDeps)
+  );
+  register('autonomousDev.configureClaudeModel', () =>
+    configCmds.configureClaudeModel(deps.configDeps)
   );
   register('autonomousDev.showEffectiveConfiguration', () =>
     configCmds.showEffectiveConfiguration(deps.configDeps)

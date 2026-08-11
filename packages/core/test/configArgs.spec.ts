@@ -19,8 +19,6 @@ describe('buildControllerCommand — config subcommands', () => {
     assert.equal(mutating, false);
     assert.deepEqual(args, [
       '/opt/autodev/scripts/controller.py',
-      '--project-root',
-      '/work/repo',
       '--state-dir',
       '/state',
       'config-show',
@@ -30,15 +28,41 @@ describe('buildControllerCommand — config subcommands', () => {
     assert.equal(isMutatingSubcommand('config-show'), false);
   });
 
-  it('config-list-profiles / -presets / -claude-runtimes all pass --json', () => {
+  it('builds global config commands without repository identity', () => {
+    const globalCtx: ControllerContext = {
+      pythonPath: 'python3',
+      controllerPath: '/opt/autodev/scripts/controller.py',
+      stateHome: '/state'
+    };
+    const { args } = buildControllerCommand(globalCtx, 'config-show');
+    assert.ok(!args.includes('--project-root'));
+    assert.throws(
+      () => buildControllerCommand(globalCtx, 'list-runs'),
+      /requires an explicit projectRoot/
+    );
+  });
+
+  it('config list commands all pass --json', () => {
     for (const sub of [
       'config-list-profiles',
       'config-list-presets',
-      'config-list-claude-runtimes'
+      'config-list-claude-runtimes',
+      'config-list-claude-models'
     ] as const) {
       const { args } = buildControllerCommand(ctx, sub);
       assert.ok(args.includes('--json'), `${sub} should include --json`);
     }
+  });
+
+  it('config-set-claude-model supports a configured id and Default', () => {
+    assert.deepEqual(
+      buildControllerCommand(ctx, 'config-set-claude-model', { name: 'sonnet' }).args.slice(-2),
+      ['config-set-claude-model', 'sonnet']
+    );
+    assert.equal(
+      buildControllerCommand(ctx, 'config-set-claude-model').args.at(-1),
+      'config-set-claude-model'
+    );
   });
 
   it('config-validate is read-only and JSON', () => {
@@ -48,10 +72,7 @@ describe('buildControllerCommand — config subcommands', () => {
   });
 
   it('config-set-active-preset requires a name and is mutating', () => {
-    assert.throws(
-      () => buildControllerCommand(ctx, 'config-set-active-preset'),
-      /requires a name/
-    );
+    assert.throws(() => buildControllerCommand(ctx, 'config-set-active-preset'), /requires a name/);
     const { args, mutating } = buildControllerCommand(ctx, 'config-set-active-preset', {
       name: 'azure-autonomous'
     });

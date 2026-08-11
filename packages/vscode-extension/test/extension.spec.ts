@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 
 import * as vscode from 'vscode';
@@ -7,6 +7,7 @@ import { detectLegacyRun, type DiscoveredRun } from '@semanticmatter/core';
 
 import type { AutonomousDevApi } from '../src/extension';
 import { openFileAtLine } from '../src/dashboard/openLocation';
+import { resolveWorkspaceRepoId } from '../src/workspaceRepoId';
 import { buildFixtures, type Fixtures } from './fixtures';
 
 const EXT_ID = 'semanticmatter.semanticmatter-autonomous-development';
@@ -37,6 +38,7 @@ const CONTRIBUTED_COMMANDS = [
   'configureReviewAgent',
   'configureAdversarialReviewer',
   'configureClaudeRuntime',
+  'configureClaudeModel',
   'showEffectiveConfiguration',
   'validateConfiguration',
   'launchClaude',
@@ -56,7 +58,22 @@ function run(runId: string): DiscoveredRun {
 
 before(async function () {
   this.timeout(60000);
-  fixtures = buildFixtures();
+  const extensionRoot = path.resolve(__dirname, '../..');
+  const existingFolderCount = vscode.workspace.workspaceFolders?.length ?? 0;
+  vscode.workspace.updateWorkspaceFolders(0, existingFolderCount, {
+    uri: vscode.Uri.file(extensionRoot),
+    name: 'autonomous-development-vsplugin'
+  });
+  const built = buildFixtures();
+  const workspaceRepoId = resolveWorkspaceRepoId(extensionRoot);
+  assert.ok(workspaceRepoId, 'integration test workspace must resolve as a Git repository');
+  const repositories = path.join(built.stateHome, 'repositories');
+  renameSync(path.join(repositories, built.repoId), path.join(repositories, workspaceRepoId));
+  fixtures = {
+    ...built,
+    repoId: workspaceRepoId,
+    runDir: (runId: string) => path.join(repositories, workspaceRepoId, 'runs', runId)
+  };
 
   // Point the extension at the fixture state home through the real setting, then
   // activate — this also exercises the setting > env > default precedence.
@@ -119,6 +136,7 @@ describe('discovery and grouping', () => {
       'verificationFailed',
       'changesRequired',
       'adversarialRequired',
+      'awaitingDecision',
       'malformed'
     ]) {
       assert.ok(active.includes(id), `active group missing: ${id}`);
@@ -127,7 +145,7 @@ describe('discovery and grouping', () => {
 
   it('places terminal completed/blocked/cancelled runs in the completed group', () => {
     const completed = api.getRunsForGroup('completed').map((r) => r.runId);
-    for (const id of ['complete', 'blocked', 'cancelled']) {
+    for (const id of ['complete', 'completeWithFollowups', 'blocked', 'cancelled']) {
       assert.ok(completed.includes(id), `completed group missing: ${id}`);
     }
   });
@@ -180,6 +198,27 @@ describe('per-scenario workflow model (single shared evaluator)', () => {
     assert.equal(model?.status, 'complete');
     assert.equal(model?.gatesPass, true);
     assert.equal(model?.recommendedNextAction.code, 'none');
+  });
+
+  it('complete_with_followups → successful terminal with deferred adversarial history', () => {
+    const model = run('completeWithFollowups').model;
+    assert.equal(model?.status, 'complete_with_followups');
+    assert.equal(model?.isTerminal, true);
+    assert.equal(model?.gatesPass, true);
+    assert.equal(model?.recommendedNextAction.code, 'none');
+    assert.equal(model?.completionEvaluation?.followUpCount, 3);
+    assert.equal(model?.adversarial.latestRound, 8);
+    assert.equal(model?.adversarial.latestVerdict, 'changes_required');
+  });
+
+  it('awaiting adversarial human decision keeps the workflow cursor on adversarial', () => {
+    const model = run('awaitingDecision').model;
+    assert.equal(model?.recommendedNextAction.code, 'await-human-decision');
+    assert.equal(model?.stages.find((stage) => stage.id === 'triage')?.status, 'complete');
+    assert.equal(
+      model?.stages.find((stage) => stage.id === 'adversarial-review')?.status,
+      'active'
+    );
   });
 
   it('blocked → blockingReason + continuation action', () => {
@@ -257,5 +296,15 @@ describe('opening artifacts and comparisons', () => {
     const uri = vscode.Uri.file(path.join(fixtures.runDir('complete'), 'accepted-plan.md'));
     const editor = await openFileAtLine(uri, 3);
     assert.equal(editor.selection.active.line, 2);
+  });
+
+  it('opens the aggregate Verification-stage log from the durable run directory', async () => {
+    await vscode.commands.executeCommand('autonomousDev.openVerificationLog', run('complete'));
+    const editor = vscode.window.activeTextEditor;
+    assert.ok(editor, 'no active text editor after opening verification log');
+    assert.equal(
+      editor.document.uri.fsPath,
+      realpathSync(path.join(fixtures.runDir('complete'), 'verification', 'unit.log'))
+    );
   });
 });

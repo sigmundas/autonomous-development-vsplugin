@@ -70,7 +70,8 @@ h3 {
   color: #000;
   border-color: transparent;
 }
-.badge.status-complete {
+.badge.status-complete,
+.badge.status-complete_with_followups {
   background: var(--vscode-testing-iconPassed, #2ea043);
   color: #fff;
 }

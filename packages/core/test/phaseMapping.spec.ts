@@ -52,12 +52,22 @@ describe('stageForControllerPhase (explicit controller phase → stage)', () => 
   it('maps review to Independent Review', () => {
     assert.equal(stageForControllerPhase('review', 'active'), 'independent-review');
   });
+  it('maps post-review phases exhaustively', () => {
+    assert.equal(stageForControllerPhase('reviewed', 'active'), 'triage');
+    assert.equal(stageForControllerPhase('verified', 'active'), 'independent-review');
+    assert.equal(stageForControllerPhase('adversarially-reviewed', 'active'), 'adversarial-review');
+    assert.equal(
+      stageForControllerPhase('completion-gates-failed', 'active'),
+      'completion-evaluation'
+    );
+  });
   it('maps adversarial/adversarial-review to Adversarial Review', () => {
     assert.equal(stageForControllerPhase('adversarial', 'active'), 'adversarial-review');
     assert.equal(stageForControllerPhase('adversarial-review', 'active'), 'adversarial-review');
   });
   it('returns undefined for terminal statuses', () => {
     assert.equal(stageForControllerPhase('implementing', 'complete'), undefined);
+    assert.equal(stageForControllerPhase('implementing', 'complete_with_followups'), undefined);
     assert.equal(stageForControllerPhase('implementing', 'cancelled'), undefined);
     assert.equal(stageForControllerPhase('implementing', 'archived'), undefined);
   });
@@ -189,6 +199,53 @@ describe('deriveStages review history', () => {
     const review = deriveStages(facts).find((stage) => stage.id === 'independent-review');
     assert.equal(review?.status, 'active');
     assert.equal(review?.detail, 'Round 2 · changes required · re-review in progress');
+  });
+});
+
+describe('deriveStages adversarial disposition regression', () => {
+  const facts: StageFacts = {
+    ...planAcceptedFacts(),
+    hasChecks: true,
+    verificationPassed: true,
+    hasReviews: true,
+    reviewPassed: true,
+    latestReviewRound: 3,
+    latestReviewVerdict: 'pass',
+    severeFindingCount: 0,
+    requiresAdversarial: true,
+    hasAdversarial: true,
+    adversarialPassed: false,
+    latestAdversarialRound: 8,
+    latestAdversarialVerdict: 'changes_required',
+    controllerPhase: 'adversarially-reviewed',
+    nextActionCode: 'completion-disposition'
+  };
+
+  it('keeps triage complete and marks the actual adversarial stage active', () => {
+    const byId = new Map(deriveStages(facts).map((stage) => [stage.id, stage]));
+    assert.equal(byId.get('triage')?.status, 'complete');
+    assert.deepEqual(byId.get('adversarial-review'), {
+      id: 'adversarial-review',
+      title: 'Adversarial Review',
+      status: 'active',
+      detail: 'Round 8 · changes required · review completed'
+    });
+    assert.equal(byId.get('completion-evaluation')?.status, 'pending');
+  });
+
+  it('pins an adversarial human-decision pause to adversarial, not triage', () => {
+    const paused: StageFacts = {
+      ...facts,
+      controllerPhase: 'completion-evaluation',
+      awaitingHumanDecision: true,
+      awaitingHumanDecisionPhase: 'adversarial',
+      awaitingHumanDecisionReason: 'Choose migration policy',
+      nextActionCode: 'await-human-decision'
+    };
+    const byId = new Map(deriveStages(paused).map((stage) => [stage.id, stage]));
+    assert.equal(byId.get('triage')?.status, 'complete');
+    assert.equal(byId.get('adversarial-review')?.status, 'active');
+    assert.match(byId.get('adversarial-review')?.detail ?? '', /Awaiting decision/);
   });
 });
 

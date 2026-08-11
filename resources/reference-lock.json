@@ -5,7 +5,10 @@
   "revision": "a72f740e281d40a6e372ee385fb4c5302ab7d0d7",
   "shortRevision": "a72f740",
   "stateSchemaVersion": 2,
-  "supportedStateSchemaVersions": [1, 2],
+  "supportedStateSchemaVersions": [
+    1,
+    2
+  ],
   "notes": [
     "Run-state is at schema_version 2; there is no schema v3 upstream.",
     "validate_state does not validate run-state.json against a bundled schema (run-state schema validation is deferred upstream), so no run-state.schema.json is mirrored.",
@@ -14,6 +17,7 @@
   "schemas": {
     "accept-decisions.schema.json": "bd662679dd302d77ae2765db3415f8d7481e8fe27c435237a0d0de3be6bfdfc7",
     "adversarial-review.schema.json": "baf7530ef2a7bad448685a27cd6fe47fd82e726f6b58df981c9074b0d0789206",
+    "completion-disposition.schema.json": "8ccd705e2e8bacd424ea0fd1881b9027d1f20577cbb2d8c4bee2c81d6c95149b",
     "enhanced-idea.schema.json": "258957b4a7aae360433ed76806ee74e46f95f85e1170bd4854a5d26373189754",
     "implementation-plan.schema.json": "1e04b95ebe6022737eb44dfc689b550bb3e3b6d78c8b98eeaedaf609d586909b",
     "review-delta.schema.json": "7026ed35dba033a09a0d64b3a42e46f740d32f5a9711129337194b628eaba7d6",

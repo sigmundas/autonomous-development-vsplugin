@@ -105,6 +105,10 @@ describe('recommendNextAction defensive front-extensions (REFERENCE §7)', () =>
     assert.equal(code(ready({ status: 'complete' })), 'none');
   });
 
+  it('complete_with_followups ⇒ none', () => {
+    assert.equal(code(ready({ status: 'complete_with_followups' })), 'none');
+  });
+
   it('blocked ⇒ linked continuation guidance', () => {
     assert.equal(code(ready({ status: 'blocked' })), 'continue-blocked');
   });

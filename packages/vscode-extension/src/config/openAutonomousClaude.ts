@@ -1,12 +1,17 @@
 import { basename } from 'node:path';
 
 import * as vscode from 'vscode';
-import type { ClaudeRuntime } from '@semanticmatter/core';
+import type { ClaudeModel, ClaudeRuntime } from '@semanticmatter/core';
 
 import type { ConfigStore } from '../configStore';
 import type { OutputLog } from '../output';
 import { isWorkspaceTrusted } from '../trust';
-import { buildLauncherArgs, withAutonomousClaudePermissions } from './claudeLauncher';
+import {
+  buildLauncherArgs,
+  runtimeExecutablePathEnv,
+  withAutonomousClaudePermissions,
+  withClaudeModel
+} from './claudeLauncher';
 import { isKnownShellBinary, pluginDirFromControllerPath } from './resumeInClaude';
 import type { ClaudeTerminalRegistry } from './claudeTerminalRegistry';
 
@@ -49,6 +54,7 @@ export function newRunBootstrapPrompt(bootstrap: NewRunBootstrap): string {
 
 export interface OpenAutonomousClaudePlan {
   readonly runtime: ClaudeRuntime;
+  readonly model?: ClaudeModel;
   readonly cwd: string;
   readonly pluginDir?: string;
   readonly launcherArgv: readonly string[];
@@ -68,10 +74,14 @@ export function planOpenAutonomousClaude(
   runtime: ClaudeRuntime,
   cwd: string,
   controllerPath: string,
-  bootstrap?: NewRunBootstrap
+  bootstrap?: NewRunBootstrap,
+  model?: ClaudeModel
 ): OpenAutonomousClaudePlan {
   const pluginDir = pluginDirFromControllerPath(controllerPath);
-  const launcherArgv = withAutonomousClaudePermissions(buildLauncherArgs(runtime));
+  const launcherArgv = withAutonomousClaudePermissions(
+    withClaudeModel(buildLauncherArgs(runtime), model),
+    runtime.allowedCommands ?? []
+  );
   if (pluginDir) {
     launcherArgv.push('--plugin-dir', pluginDir);
   }
@@ -82,6 +92,7 @@ export function planOpenAutonomousClaude(
   }
   return {
     runtime,
+    ...(model !== undefined ? { model } : {}),
     cwd,
     ...(pluginDir !== undefined ? { pluginDir } : {}),
     launcherArgv,
@@ -101,7 +112,8 @@ export function buildOpenAutonomousClaudeTerminalOptions(
     );
   }
   const env: Record<string, string> = {
-    [AUTONOMOUS_CLAUDE_TERMINAL_ENV_MARKER]: '1'
+    [AUTONOMOUS_CLAUDE_TERMINAL_ENV_MARKER]: '1',
+    ...runtimeExecutablePathEnv(plan.runtime)
   };
   return {
     name: plan.terminalName,
@@ -163,9 +175,10 @@ export async function openAutonomousClaudeInWorkspace(
     return undefined;
   }
 
-  const plan = planOpenAutonomousClaude(runtime, cwd, deps.getControllerPath(), bootstrap);
+  const model = snap.effective?.effective.claudeModel;
+  const plan = planOpenAutonomousClaude(runtime, cwd, deps.getControllerPath(), bootstrap, model);
   deps.log.info(
-    `openAutonomousClaude cwd=${cwd} runtime=${runtime.name} launcher=${runtime.launcher}`
+    `openAutonomousClaude cwd=${cwd} runtime=${runtime.name} model=${model?.id ?? 'default'} launcher=${runtime.launcher}`
   );
 
   const create =

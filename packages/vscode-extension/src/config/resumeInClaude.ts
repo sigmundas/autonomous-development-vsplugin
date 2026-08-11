@@ -13,15 +13,12 @@ import type { OutputLog } from '../output';
 import { isWorkspaceTrusted } from '../trust';
 import {
   buildLauncherArgs,
-  withAutonomousClaudePermissions
+  runtimeExecutablePathEnv,
+  withAutonomousClaudePermissions,
+  withClaudeModel
 } from './claudeLauncher';
-import {
-  type ClaudeTerminalRegistry
-} from './claudeTerminalRegistry';
-import {
-  terminalIdentityForRun,
-  type ClaudeTerminalIdentity
-} from './claudeTerminalIdentity';
+import { type ClaudeTerminalRegistry } from './claudeTerminalRegistry';
+import { terminalIdentityForRun, type ClaudeTerminalIdentity } from './claudeTerminalIdentity';
 
 export interface ResumeInClaudeDeps {
   readonly store: ConfigStore;
@@ -61,6 +58,7 @@ export interface ResumeInClaudePlan {
   readonly run: DiscoveredRun;
   readonly runtime: ClaudeRuntime | undefined;
   readonly source: RuntimeSource;
+  readonly model?: import('@semanticmatter/core').ClaudeModel;
   readonly worktreePath: string;
   readonly pluginDir?: string;
   /** Argv the launcher will be spawned with (launcher first, then args, then --plugin-dir). */
@@ -178,9 +176,7 @@ export function pluginDirFromControllerPath(controllerPath: string): string | un
 export function worktreeForRun(run: DiscoveredRun): string | undefined {
   const repo = run.state?.repository;
   return (
-    repo?.worktreePath ??
-    repo?.canonicalRoot ??
-    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    repo?.worktreePath ?? repo?.canonicalRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
   );
 }
 
@@ -200,8 +196,12 @@ export function planResumeInClaude(
   const pluginDir = pluginDirFromControllerPath(controllerPath);
   const instruction = RESUME_INSTRUCTION_TEMPLATE(run.runId);
   const bootstrapPrompt = autonomousResumeBootstrapPrompt(run.runId);
+  const model = snapshotFor(run)?.claudeModel;
   const launcherArgv: string[] = runtime
-    ? withAutonomousClaudePermissions(buildLauncherArgs(runtime))
+    ? withAutonomousClaudePermissions(
+        withClaudeModel(buildLauncherArgs(runtime), model),
+        runtime.allowedCommands ?? []
+      )
     : [];
   if (pluginDir && runtime) {
     launcherArgv.push('--plugin-dir', pluginDir);
@@ -216,6 +216,7 @@ export function planResumeInClaude(
     run,
     runtime,
     source,
+    ...(model !== undefined ? { model } : {}),
     worktreePath,
     ...(pluginDir !== undefined ? { pluginDir } : {}),
     launcherArgv,
@@ -264,9 +265,7 @@ export function claudeTerminalNameFor(identity: ClaudeTerminalIdentity): string 
  * {@link claudeTerminalNameFor}. Returns `undefined` when the name does not
  * match — never guesses.
  */
-export function parseClaudeTerminalIdentity(
-  name: string
-): ClaudeTerminalIdentity | undefined {
+export function parseClaudeTerminalIdentity(name: string): ClaudeTerminalIdentity | undefined {
   if (!name.startsWith(CLAUDE_TERMINAL_NAME_PREFIX)) return undefined;
   const tail = name.slice(CLAUDE_TERMINAL_NAME_PREFIX.length).trim();
   const parts = tail.split(CLAUDE_TERMINAL_NAME_SEPARATOR);
@@ -346,7 +345,8 @@ export function buildTerminalOptions(plan: ResumeInClaudePlan): vscode.TerminalO
   }
   const env: Record<string, string> = {
     [CLAUDE_TERMINAL_ENV_MARKER]: '1',
-    [CLAUDE_TERMINAL_RUN_ENV]: plan.run.runId
+    [CLAUDE_TERMINAL_RUN_ENV]: plan.run.runId,
+    ...(plan.runtime ? runtimeExecutablePathEnv(plan.runtime) : {})
   };
   return {
     name: claudeTerminalNameFor(terminalIdentityForRun(plan.run)),
@@ -501,13 +501,15 @@ async function runResumeInClaude(
 }
 
 /** Focus an existing extension-tracked Claude terminal for a run, if any. */
-export function focusClaudeTerminal(
-  run: DiscoveredRun,
-  registry: ClaudeTerminalRegistry
-): boolean {
+export function focusClaudeTerminal(run: DiscoveredRun, registry: ClaudeTerminalRegistry): boolean {
   return registry.focus(terminalIdentityForRun(run));
 }
 
 function terminalStatus(status: string): boolean {
-  return status === 'complete' || status === 'cancelled' || status === 'archived';
+  return (
+    status === 'complete' ||
+    status === 'complete_with_followups' ||
+    status === 'cancelled' ||
+    status === 'archived'
+  );
 }
